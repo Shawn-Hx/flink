@@ -101,7 +101,8 @@ public final class PerJobMiniClusterFactory {
 			ConfigConstants.DEFAULT_LOCAL_NUMBER_TASK_MANAGER);
 
 		// we have to use the maximum parallelism as a default here, otherwise streaming pipelines would not run
-		int numSlotsPerTaskManager = configuration.getInteger(TaskManagerOptions.NUM_TASK_SLOTS, maximumParallelism);
+//		int numSlotsPerTaskManager = configuration.getInteger(TaskManagerOptions.NUM_TASK_SLOTS, maximumParallelism);
+		int numSlotsPerTaskManager = TaskManagerOptions.NUM_TASK_SLOTS.defaultValue();
 
 		return new MiniClusterConfiguration.Builder()
 			.setConfiguration(configuration)
