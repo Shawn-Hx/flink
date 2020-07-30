@@ -202,7 +202,7 @@ public class TaskManagerOptions {
 	public static final ConfigOption<Integer> NUM_TASK_SLOTS =
 		key("taskmanager.numberOfTaskSlots")
 			.intType()
-			.defaultValue(1)
+			.defaultValue(6)
 			.withDescription("The number of parallel operator or user function instances that a single TaskManager can" +
 				" run. If this value is larger than 1, a single TaskManager takes multiple instances of a function or" +
 				" operator. That way, the TaskManager can utilize multiple CPU cores, but at the same time, the" +
