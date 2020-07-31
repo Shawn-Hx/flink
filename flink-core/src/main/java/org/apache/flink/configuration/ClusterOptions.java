@@ -78,4 +78,20 @@ public class ClusterOptions {
 				.text("Enable the slot spread out allocation strategy. This strategy tries to spread out " +
 					"the slots evenly across all available %s.", code("TaskExecutors"))
 				.build());
+
+	public static final ConfigOption<Boolean> MY_SLOTS_STRATEGY = ConfigOptions
+		.key("cluster.my-slots-strategy")
+		.defaultValue(false)
+		.withDescription(
+			Description.builder()
+				.text("My slot selection strategy")
+				.build());
+
+	public static final ConfigOption<Boolean> MY_SCHEDULER = ConfigOptions
+		.key("cluster.my-scheduler")
+		.defaultValue(true)
+		.withDescription(
+			Description.builder()
+				.text("Using my self-define SchedulerImpl")
+				.build());
 }
