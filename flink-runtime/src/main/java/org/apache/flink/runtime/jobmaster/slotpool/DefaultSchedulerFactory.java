@@ -32,23 +32,35 @@ public class DefaultSchedulerFactory implements SchedulerFactory {
 	@Nonnull
 	private final SlotSelectionStrategy slotSelectionStrategy;
 
-	public DefaultSchedulerFactory(@Nonnull SlotSelectionStrategy slotSelectionStrategy) {
+	private final boolean isUsingMyScheduler;
+
+	public DefaultSchedulerFactory(@Nonnull SlotSelectionStrategy slotSelectionStrategy,
+								   boolean isUsingMyScheduler) {
 		this.slotSelectionStrategy = slotSelectionStrategy;
+		this.isUsingMyScheduler = isUsingMyScheduler;
 	}
 
 	@Nonnull
 	@Override
 	public Scheduler createScheduler(@Nonnull SlotPool slotPool) {
+		if (isUsingMyScheduler) {
+			// scheduler defined by huangxiao
+			return new MySchedulerImpl(slotSelectionStrategy, slotPool);
+		}
 		return new SchedulerImpl(slotSelectionStrategy, slotPool);
 	}
 
 	@Nonnull
 	private static SlotSelectionStrategy selectSlotSelectionStrategy(@Nonnull Configuration configuration) {
 		final boolean evenlySpreadOutSlots = configuration.getBoolean(ClusterOptions.EVENLY_SPREAD_OUT_SLOTS_STRATEGY);
+		final boolean myStrategy = configuration.getBoolean(ClusterOptions.MY_SLOTS_STRATEGY);
 
 		final SlotSelectionStrategy locationPreferenceSlotSelectionStrategy;
 
-		if (evenlySpreadOutSlots) {
+		if (myStrategy) {
+			// slot selection strategy defined by huangxiao
+			locationPreferenceSlotSelectionStrategy = LocationPreferenceSlotSelectionStrategy.createMySlotsStrategy();
+		} else if (evenlySpreadOutSlots) {
 			locationPreferenceSlotSelectionStrategy = LocationPreferenceSlotSelectionStrategy.createEvenlySpreadOut();
 		} else {
 			locationPreferenceSlotSelectionStrategy = LocationPreferenceSlotSelectionStrategy.createDefault();
@@ -61,8 +73,14 @@ public class DefaultSchedulerFactory implements SchedulerFactory {
 		}
 	}
 
+	private static boolean isUsingMyScheduler(@Nonnull Configuration configuration) {
+		return configuration.getBoolean(ClusterOptions.MY_SCHEDULER);
+	}
+
 	public static DefaultSchedulerFactory fromConfiguration(
 		@Nonnull Configuration configuration) {
-		return new DefaultSchedulerFactory(selectSlotSelectionStrategy(configuration));
+		return new DefaultSchedulerFactory(
+			selectSlotSelectionStrategy(configuration),
+			isUsingMyScheduler(configuration));
 	}
 }
