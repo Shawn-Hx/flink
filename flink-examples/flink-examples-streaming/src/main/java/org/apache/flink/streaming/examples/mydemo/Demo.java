@@ -20,7 +20,7 @@ public class Demo {
         public void run(SourceContext<Tuple2<String, Integer>> sourceContext) throws Exception {
             Random random = new Random();
             while (running) {
-                Thread.sleep(1000);
+                Thread.sleep(5000);
                 String key = "class" + (char) ('A' + random.nextInt(3));
                 int value = random.nextInt(5) + 1;
                 System.out.println(String.format("Emit:\t(%s, %d)", key, value));
@@ -37,33 +37,40 @@ public class Demo {
 //        env.disableOperatorChaining();
 //        env.setParallelism(2);
 
-        DataStream<Tuple2<String, Integer>> ds = env.addSource(new DataSource());
+        DataStream<Tuple2<String, Integer>> ds = env.addSource(new DataSource())
+			.slotSharingGroup("1")
+			;
         // source --> map --> sink
         ds.map(new MapFunction<Tuple2<String, Integer>, Tuple2<String, Integer>>() {
             @Override
             public Tuple2<String, Integer> map(Tuple2<String, Integer> tuple) {
                 return Tuple2.of(tuple.f0 + "x", tuple.f1 * 10);
             }
-        }).setParallelism(1).slotSharingGroup("1")
+        })
+			.setParallelism(1)
+			.slotSharingGroup("1")
         .addSink(new SinkFunction<Tuple2<String, Integer>>() {
             public void invoke(Tuple2<String, Integer> value, Context context) {
                 System.out.println(String.format("Get:\t(%s, %d)", value.f0, value.f1));
             }
-        }).setParallelism(1).slotSharingGroup("1");
+        })
+			.setParallelism(1)
+			.slotSharingGroup("2")
+		;
 
-        // source --> map --> sink
-        ds.map(new MapFunction<Tuple2<String, Integer>, Tuple2<String, Integer>>() {
-            @Override
-            public Tuple2<String, Integer> map(Tuple2<String, Integer> tuple) {
-                return Tuple2.of(tuple.f0 + "y", -tuple.f1);
-            }
-        }).setParallelism(1).slotSharingGroup("2")
-        .addSink(new SinkFunction<Tuple2<String, Integer>>() {
-            @Override
-            public void invoke(Tuple2<String, Integer> value, Context context) {
-                System.out.println(String.format("Get:\t(%s, %d)", value.f0, value.f1));
-            }
-        }).setParallelism(1).slotSharingGroup("2");
+//        // source --> map --> sink
+//        ds.map(new MapFunction<Tuple2<String, Integer>, Tuple2<String, Integer>>() {
+//            @Override
+//            public Tuple2<String, Integer> map(Tuple2<String, Integer> tuple) {
+//                return Tuple2.of(tuple.f0 + "y", -tuple.f1);
+//            }
+//        }).setParallelism(1).slotSharingGroup("2")
+//        .addSink(new SinkFunction<Tuple2<String, Integer>>() {
+//            @Override
+//            public void invoke(Tuple2<String, Integer> value, Context context) {
+//                System.out.println(String.format("Get:\t(%s, %d)", value.f0, value.f1));
+//            }
+//        }).setParallelism(1).slotSharingGroup("2");
 
         env.execute();
     }
