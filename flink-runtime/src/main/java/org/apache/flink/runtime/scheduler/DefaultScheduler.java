@@ -19,6 +19,8 @@
 
 package org.apache.flink.runtime.scheduler;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.annotation.JSONField;
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
@@ -49,16 +51,14 @@ import org.apache.flink.runtime.shuffle.ShuffleMaster;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
 import org.apache.flink.util.ExceptionUtils;
 
+import org.apache.flink.util.IterableUtils;
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
@@ -165,21 +165,106 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 		return executionFailureHandler.getNumberOfRestarts();
 	}
 
+	private static class Operator {
+		@JSONField
+		public int idx;
+		@JSONField(name = "is_source")
+		public boolean isSource;
+		@JSONField(name = "is_sink")
+		public boolean isSink;
+		@JSONField
+		public String name;
+		@JSONField
+		public double cpu;
+		@JSONField
+		public double payload;
+		@JSONField
+		public double weight;
+	}
+
+	private static class Connection {
+		@JSONField(name = "from_vertex")
+		public int fromVertex;
+		@JSONField(name = "to_vertex")
+		public int toVertex;
+		@JSONField
+		public double selectivity;
+		@JSONField
+		public double weight;
+	}
+
+	private static class GraphInfo {
+		@JSONField(name = "max_throughput")
+		public int maxThroughput;
+		@JSONField(name = "event_rate")
+		public int eventRate;
+		@JSONField
+		public List<Operator> operators = new ArrayList<>();
+		@JSONField
+		public List<Connection> connections = new ArrayList<>();
+	}
+
+	private void exportExecutionGraph() {
+//		System.out.println("[HX] total vertices num: " + executionGraph.getTotalNumberOfVertices());
+		GraphInfo graphInfo = new GraphInfo();
+		SchedulingTopology<?, ?> topology = getSchedulingTopology();
+		InputsLocationsRetriever inputsLocationsRetriever = getInputsLocationsRetriever();
+		// Execution vertices sorted by topological order
+		List<ExecutionVertexID> vertexIDs = IterableUtils.toStream(topology.getVertices())
+			.map(SchedulingExecutionVertex::getId)
+			.collect(Collectors.toList());
+
+		int curID = 0;
+		Map<ExecutionVertexID, Integer> idMap = new HashMap<>();
+		for (ExecutionVertexID executionVertexID: vertexIDs) {
+			// TODO get more information about the operator
+			ExecutionVertex executionVertex = getExecutionVertex(executionVertexID);
+
+			Operator operator = new Operator();
+			operator.idx = curID++;
+			idMap.put(executionVertexID, operator.idx);
+
+			// upstream vertices
+			Collection<Collection<ExecutionVertexID>> allProducers =
+				inputsLocationsRetriever.getConsumedResultPartitionsProducers(executionVertexID);
+
+			if (allProducers.size() == 0) {
+				operator.isSource = true;
+			}
+			graphInfo.operators.add(operator);
+
+			for (Collection<ExecutionVertexID> producers : allProducers) {
+				for (ExecutionVertexID producer : producers) {
+					assert idMap.containsKey(producer);
+					// TODO get more information about the connection
+					Connection conn = new Connection();
+					conn.fromVertex = idMap.get(producer);
+					conn.toVertex = operator.idx;
+					graphInfo.connections.add(conn);
+				}
+			}
+		}
+
+		String graphJSONString = JSON.toJSONString(graphInfo, true);
+		// TODO file path
+		String filepath = "/home/huangxiao/Desktop/flink_graph.json";
+		try {
+			FileWriter writer = new FileWriter(filepath);
+			writer.write(graphJSONString);
+			writer.close();
+			log.info("[HX] export DAG info to " + filepath);
+		} catch (IOException e) {
+			e.printStackTrace();
+			log.info("[HX] export DAG failed.");
+		}
+	}
+
 	@Override
 	protected void startSchedulingInternal() {
 		log.info("Starting scheduling with scheduling strategy [{}]", schedulingStrategy.getClass().getName());
 		prepareExecutionGraphForNgScheduling();
-		// TODO export execution graph info
-		// Get the execution graph
-		ExecutionGraph executionGraph = getExecutionGraph();
-		int totalVerticesNum = 0;
-		for (ExecutionVertex v : executionGraph.getAllExecutionVertices()) {
-			totalVerticesNum ++;
-		}
-
-		SchedulingTopology<?, ?> topology = getSchedulingTopology();
-
-		System.out.println("[HX] total vertices num: " + totalVerticesNum);
+		// [HX] convert execution graph to json string and write it to a file
+		exportExecutionGraph();
 		schedulingStrategy.startScheduling();
 	}
 

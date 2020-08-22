@@ -1,7 +1,13 @@
 package org.apache.flink.runtime.jobmaster.slotpool;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.annotation.JSONField;
+import com.esotericsoftware.minlog.Log;
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.api.common.resources.Resource;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.configuration.MemorySize;
+import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.SlotProfile;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.FutureUtils;
@@ -21,6 +27,8 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -67,10 +75,83 @@ public class MySchedulerImpl implements Scheduler {
 				"Call to Scheduler.start(...) required.");
 	}
 
+	private static class MySlot {
+		int id;
+		@JSONField
+		public int cpu;
+		@JSONField
+		public int memory;
+
+		public MySlot(int cpu, int memory) {
+			this.cpu = cpu;
+			this.memory = memory;
+		}
+	}
+
+	private void exportSlotsInfo() {
+		// HX: Try to get slot here
+		// TODO
+		log.info("[HX] Try to export slots' info");
+		Collection<SlotInfoWithUtilization> availableSlots = slotPool.getAvailableSlotsInformation();
+		log.info("[HX] Available slots num: " + availableSlots.size());
+
+		FileWriter writer;
+		try {
+			writer = new FileWriter("/home/huangxiao/Desktop/slots.json");
+		} catch (IOException e) {
+			Log.error("[HX] export slots error");
+			return;
+		}
+
+		if (availableSlots.size() == 0) {
+			for (int i = 0; i < 2; i++) {
+				SlotRequestId slotRequestId = new SlotRequestId();
+				Time slotRequestTimeout = Time.seconds(300);
+				CompletableFuture<PhysicalSlot> slotAllocationFuture = slotPool.
+					requestNewAllocatedSlot(slotRequestId, ResourceProfile.UNKNOWN, slotRequestTimeout);
+				slotAllocationFuture.thenAccept((PhysicalSlot slot) -> {
+					ResourceProfile resourceProfile = slot.getResourceProfile();
+					Resource cpuCores = resourceProfile.getCpuCores();
+					int cpu = 1;
+					if (cpuCores != null) {
+						// TODO default cpu value is a very big number
+						cpu = cpuCores.getValue().intValue();
+						if (cpu <= 0 || cpu > 16) {
+							cpu = 1;
+						}
+					}
+					int memory = 0;
+					MemorySize taskHeapMemory = resourceProfile.getTaskHeapMemory();
+					MemorySize taskOffHeapMemory = resourceProfile.getTaskOffHeapMemory();
+					MemorySize managedMemory = resourceProfile.getManagedMemory();
+					MemorySize networkMemory = resourceProfile.getNetworkMemory();
+					// TODO taskHeapMemory and taskOffHeapMemory
+					// TODO 1537228672809129301
+					memory += managedMemory == null ? 0 : managedMemory.getMebiBytes();
+					memory += networkMemory == null ? 0 : networkMemory.getMebiBytes();
+					System.out.println("CPU: " + cpu);
+					System.out.println("Mem: " + memory);
+
+					MySlot mySlot = new MySlot(cpu, memory);
+					String slotJSONString = JSON.toJSONString(mySlot, true);
+					try {
+						// TODO many slots
+						writer.append(slotJSONString);
+						writer.flush();
+					} catch (IOException e) {
+						log.error("[HX] write single slot json string error");
+					}
+				});
+			}
+		}
+
+	}
+
 	@Override
 	public void start(@Nonnull ComponentMainThreadExecutor mainThreadExecutor) {
 		this.componentMainThreadExecutor = mainThreadExecutor;
-		log.info("Using huangxiao's SchedulerImpl");
+		log.info("[HX] Using my SchedulerImpl");
+		exportSlotsInfo();
 	}
 
 	//---------------------------
