@@ -38,6 +38,7 @@ public class Demo {
 //        env.setParallelism(2);
 
         DataStream<Tuple2<String, Integer>> ds = env.addSource(new DataSource())
+			.setParallelism(1)
 			.slotSharingGroup("1")
 			;
         // source --> map --> sink
@@ -48,14 +49,14 @@ public class Demo {
             }
         })
 			.setParallelism(1)
-			.slotSharingGroup("1")
+			.slotSharingGroup("2")
         .addSink(new SinkFunction<Tuple2<String, Integer>>() {
             public void invoke(Tuple2<String, Integer> value, Context context) {
-                System.out.println(String.format("Get:\t(%s, %d)", value.f0, value.f1));
+                System.out.printf("Get:\t(%s, %d)%n", value.f0, value.f1);
             }
         })
 			.setParallelism(1)
-			.slotSharingGroup("2")
+			.slotSharingGroup("3")
 		;
 
 //        // source --> map --> sink
@@ -68,7 +69,7 @@ public class Demo {
 //        .addSink(new SinkFunction<Tuple2<String, Integer>>() {
 //            @Override
 //            public void invoke(Tuple2<String, Integer> value, Context context) {
-//                System.out.println(String.format("Get:\t(%s, %d)", value.f0, value.f1));
+//                System.out.printf("Get:\t(%s, %d)%n", value.f0, value.f1);
 //            }
 //        }).setParallelism(1).slotSharingGroup("2");
 
