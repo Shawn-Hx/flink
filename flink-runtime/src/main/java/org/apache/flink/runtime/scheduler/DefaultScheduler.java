@@ -207,7 +207,7 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 	private void exportExecutionGraph() {
 //		System.out.println("[HX] total vertices num: " + executionGraph.getTotalNumberOfVertices());
 		GraphInfo graphInfo = new GraphInfo();
-		SchedulingTopology<?, ?> topology = getSchedulingTopology();
+		SchedulingTopology topology = getSchedulingTopology();
 		InputsLocationsRetriever inputsLocationsRetriever = getInputsLocationsRetriever();
 		// Execution vertices sorted by topological order
 		List<ExecutionVertexID> vertexIDs = IterableUtils.toStream(topology.getVertices())
@@ -264,7 +264,7 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 		log.info("Starting scheduling with scheduling strategy [{}]", schedulingStrategy.getClass().getName());
 		prepareExecutionGraphForNgScheduling();
 		// [HX] convert execution graph to json string and write it to a file
-		exportExecutionGraph();
+//		exportExecutionGraph();
 		schedulingStrategy.startScheduling();
 	}
 
