@@ -109,10 +109,14 @@ public final class PerJobMiniClusterFactory {
 			ConfigConstants.LOCAL_NUMBER_TASK_MANAGER,
 			ConfigConstants.DEFAULT_LOCAL_NUMBER_TASK_MANAGER);
 
-		int numSlotsPerTaskManager = configuration.getOptional(TaskManagerOptions.NUM_TASK_SLOTS)
-			.orElseGet(() -> maximumParallelism > 0 ?
-				MathUtils.divideRoundUp(maximumParallelism, numTaskManagers) :
-				TaskManagerOptions.NUM_TASK_SLOTS.defaultValue());
+//		int numSlotsPerTaskManager = configuration.getOptional(TaskManagerOptions.NUM_TASK_SLOTS)
+//			.orElseGet(() -> maximumParallelism > 0 ?
+//				MathUtils.divideRoundUp(maximumParallelism, numTaskManagers) :
+//				TaskManagerOptions.NUM_TASK_SLOTS.defaultValue());
+
+		// [HX] force to use the taskmanager.numberOfTaskSlots configuration
+		// [HX] regardless of maximumParallelism
+		int numSlotsPerTaskManager = TaskManagerOptions.NUM_TASK_SLOTS.defaultValue();
 
 		return new MiniClusterConfiguration.Builder()
 			.setConfiguration(configuration)
