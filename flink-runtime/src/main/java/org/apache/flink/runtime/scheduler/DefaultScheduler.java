@@ -19,11 +19,13 @@
 
 package org.apache.flink.runtime.scheduler;
 
+import com.alibaba.fastjson.JSON;
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.blob.BlobWriter;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
+import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.execution.ExecutionState;
@@ -37,29 +39,30 @@ import org.apache.flink.runtime.executiongraph.restart.ThrowingRestartStrategy;
 import org.apache.flink.runtime.io.network.partition.JobMasterPartitionTracker;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmanager.scheduler.NoResourceAvailableException;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.slotpool.ThrowingSlotProvider;
 import org.apache.flink.runtime.metrics.groups.JobManagerJobMetricGroup;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
 import org.apache.flink.runtime.rest.handler.legacy.backpressure.BackPressureStatsTracker;
-import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
-import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategy;
-import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategyFactory;
+import org.apache.flink.runtime.scheduler.newscheduler.DSPGraph;
+import org.apache.flink.runtime.scheduler.newscheduler.Edge;
+import org.apache.flink.runtime.scheduler.newscheduler.Operator;
+import org.apache.flink.runtime.scheduler.newscheduler.Util;
+import org.apache.flink.runtime.scheduler.strategy.*;
 import org.apache.flink.runtime.shuffle.ShuffleMaster;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
 import org.apache.flink.util.ExceptionUtils;
 
+import org.apache.flink.util.IterableUtils;
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
@@ -161,6 +164,74 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 	// SchedulerNG
 	// ------------------------------------------------------------------------
 
+	/**
+	 * [HX] export executionGraph
+	 */
+	private int exportExecutionGraph() {
+		int maxParallelism = 0;
+		DSPGraph dspGraph = new DSPGraph();
+		SchedulingTopology topology = getSchedulingTopology();
+
+		InputsLocationsRetriever inputsLocationsRetriever = getInputsLocationsRetriever();
+		// Sort Execution vertices by topological order
+		List<ExecutionVertexID> vertexIDs = IterableUtils.toStream(topology.getVertices())
+			.map(SchedulingExecutionVertex::getId)
+			.collect(Collectors.toList());
+
+		Map<ExecutionVertexID, Integer> executionVertexIdMap = new HashMap<>();
+		int curExecutionVertexId = 0;
+		Map<JobVertexID, Integer> jobVertexIdMap = new HashMap<>();
+		int curJobVertexId = 0;
+		for (ExecutionVertexID executionVertexID: vertexIDs) {
+			ExecutionVertex executionVertex = getExecutionVertex(executionVertexID);
+			maxParallelism = Math.max(maxParallelism, executionVertex.getTotalNumberOfParallelSubtasks());
+
+			int curMappedExecutionVertexId = curExecutionVertexId++;
+			executionVertexIdMap.put(executionVertexID, curMappedExecutionVertexId);
+
+			JobVertexID jobVertexId = executionVertex.getJobvertexId();
+			Integer curMappedJobVertexId = jobVertexIdMap.getOrDefault(jobVertexId, curJobVertexId++);
+			jobVertexIdMap.putIfAbsent(jobVertexId, curMappedJobVertexId);
+
+			Operator operator = new Operator();
+			operator.id = curMappedExecutionVertexId;
+			operator.vertexId = curMappedJobVertexId;
+			operator.taskId = executionVertex.getParallelSubtaskIndex();
+
+			// upstream vertices
+			Collection<Collection<ExecutionVertexID>> allProducers =
+				inputsLocationsRetriever.getConsumedResultPartitionsProducers(executionVertexID);
+
+			if (allProducers.size() == 0) {
+				operator.isSource = true;
+			}
+			dspGraph.operators.add(operator);
+
+			for (Collection<ExecutionVertexID> producers : allProducers) {
+				for (ExecutionVertexID producer : producers) {
+					Edge edge = new Edge();
+					edge.fromId = executionVertexIdMap.get(producer);
+					edge.toId = curMappedExecutionVertexId;
+					dspGraph.edges.add(edge);
+				}
+			}
+		}
+		dspGraph.maxParallelism = maxParallelism;
+
+		String graphJSONString = JSON.toJSONString(dspGraph, true);
+		try {
+			FileWriter writer = new FileWriter(Util.DSP_GRAPH_PATH);
+			writer.write(graphJSONString);
+			writer.close();
+			log.info("[HX] export DAG info to " + Util.DSP_GRAPH_PATH);
+		} catch (IOException e) {
+			e.printStackTrace();
+			log.info("[HX] export DAG failed.");
+		}
+
+		return maxParallelism;
+	}
+
 	@Override
 	protected long getNumberOfRestarts() {
 		return executionFailureHandler.getNumberOfRestarts();
@@ -170,6 +241,8 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 	protected void startSchedulingInternal() {
 		log.info("Starting scheduling with scheduling strategy [{}]", schedulingStrategy.getClass().getName());
 		prepareExecutionGraphForNgScheduling();
+		// [HX] export Execution Graph
+		exportExecutionGraph();
 		schedulingStrategy.startScheduling();
 	}
 
