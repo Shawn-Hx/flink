@@ -319,6 +319,7 @@ public class SchedulerImpl implements Scheduler {
 		}
 
 		// sanity check
+		// [HX] check one slot doesn't contain two tasks from the same job vertex
 		Preconditions.checkState(!multiTaskSlotLocality.getMultiTaskSlot().contains(scheduledUnit.getJobVertexId()));
 
 		final SlotSharingManager.SingleTaskSlot leaf = multiTaskSlotLocality.getMultiTaskSlot().allocateSingleTaskSlot(

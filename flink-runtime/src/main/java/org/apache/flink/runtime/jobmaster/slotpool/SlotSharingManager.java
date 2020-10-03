@@ -214,6 +214,7 @@ public class SlotSharingManager {
 		final double taskExecutorUtilization = calculateTaskExecutorUtilization(taskExecutorSlots, groupId);
 
 		return taskExecutorSlots.values().stream()
+			// [HX] check one slot doesn't contain two tasks from the same job vertex
 			.filter(validMultiTaskSlotAndDoesNotContain(groupId))
 			.map(multiTaskSlot ->
 				new MultiTaskSlotInfo(
@@ -267,6 +268,7 @@ public class SlotSharingManager {
 	@Nullable
 	MultiTaskSlot getUnresolvedRootSlot(AbstractID groupId) {
 		return unresolvedRootSlots.values().stream()
+			// [HX] check one slot doesn't contain two tasks from the same job vertex
 			.filter(validMultiTaskSlotAndDoesNotContain(groupId))
 			.findFirst()
 			.orElse(null);
