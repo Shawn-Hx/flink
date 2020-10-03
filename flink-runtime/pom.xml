@@ -321,6 +321,13 @@ under the License.
 			<artifactId>oshi-core</artifactId>
 			<optional>true</optional>
 		</dependency>
+
+		<!-- [HX] Add fastjson to parse json -->
+		<dependency>
+			<groupId>com.alibaba</groupId>
+			<artifactId>fastjson</artifactId>
+			<version>1.2.73</version>
+		</dependency>
 	</dependencies>
 
 	<!-- Dependency Management to converge transitive dependency versions -->
