@@ -25,7 +25,6 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.blob.BlobWriter;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
-import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.execution.ExecutionState;
@@ -167,7 +166,7 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 	/**
 	 * [HX] export executionGraph
 	 */
-	private int exportExecutionGraph() {
+	private void exportExecutionGraph() {
 		int maxParallelism = 0;
 		DSPGraph dspGraph = new DSPGraph();
 		SchedulingTopology topology = getSchedulingTopology();
@@ -220,16 +219,14 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 
 		String graphJSONString = JSON.toJSONString(dspGraph, true);
 		try {
-			FileWriter writer = new FileWriter(Util.DSP_GRAPH_PATH);
+			FileWriter writer = new FileWriter(Util.DSP_GRAPH_FILE);
 			writer.write(graphJSONString);
 			writer.close();
-			log.info("[HX] export DAG info to " + Util.DSP_GRAPH_PATH);
+			log.info("[HX] export DAG info to " + Util.DSP_GRAPH_FILE);
 		} catch (IOException e) {
 			e.printStackTrace();
 			log.info("[HX] export DAG failed.");
 		}
-
-		return maxParallelism;
 	}
 
 	@Override

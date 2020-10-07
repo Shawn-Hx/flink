@@ -215,6 +215,7 @@ public class SlotSharingManager {
 
 		return taskExecutorSlots.values().stream()
 			// [HX] check one slot doesn't contain two tasks from the same job vertex
+			// [HX] groupId means JobVertexId here
 			.filter(validMultiTaskSlotAndDoesNotContain(groupId))
 			.map(multiTaskSlot ->
 				new MultiTaskSlotInfo(

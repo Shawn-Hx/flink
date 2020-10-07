@@ -349,6 +349,14 @@ public class JobManagerOptions {
 			.defaultValue(true)
 			.withDescription("Controls whether partitions should already be released during the job execution.");
 
+	/**
+	 * [HX] self-defined execution slot allocator
+	 */
+	public static final ConfigOption<Boolean> MY_EXECUTION_SLOT_ALLOCATOR =
+		key("jobmanager.sheduler.my-execution-slot-allocator")
+			.defaultValue(false)
+			.withDescription("Use my execution slot allocator or not");
+
 	// ---------------------------------------------------------------------------------------------
 
 	private JobManagerOptions() {

@@ -21,6 +21,7 @@ package org.apache.flink.runtime.scheduler;
 
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.blob.BlobWriter;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
 import org.apache.flink.runtime.concurrent.ScheduledExecutorServiceAdapter;
@@ -104,7 +105,9 @@ public class DefaultSchedulerFactory implements SchedulerNGFactory {
 			restartBackoffTimeStrategy,
 			new DefaultExecutionVertexOperations(),
 			new ExecutionVertexVersioner(),
-			new DefaultExecutionSlotAllocatorFactory(slotProviderStrategy));
+//			new DefaultExecutionSlotAllocatorFactory(slotProviderStrategy)
+			createExecutionSlotAllocatorFactory(jobMasterConfiguration, slotProviderStrategy, slotProvider)
+		);
 	}
 
 	static SchedulingStrategyFactory createSchedulingStrategyFactory(final ScheduleMode scheduleMode) {
@@ -117,5 +120,16 @@ public class DefaultSchedulerFactory implements SchedulerNGFactory {
 			default:
 				throw new IllegalStateException("Unsupported schedule mode " + scheduleMode);
 		}
+	}
+
+	static ExecutionSlotAllocatorFactory createExecutionSlotAllocatorFactory(
+		final Configuration configuration,
+		final SlotProviderStrategy slotProviderStrategy,
+		final SlotProvider slotProvider) {
+		boolean isUsingMySlotProvider = configuration.getBoolean(JobManagerOptions.MY_EXECUTION_SLOT_ALLOCATOR);
+
+		if (isUsingMySlotProvider)
+			return new MyExecutionSlotAllocatorFactory(slotProvider);
+		return new DefaultExecutionSlotAllocatorFactory(slotProviderStrategy);
 	}
 }
