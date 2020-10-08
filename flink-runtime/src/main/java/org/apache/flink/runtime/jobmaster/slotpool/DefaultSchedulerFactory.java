@@ -21,6 +21,7 @@ package org.apache.flink.runtime.jobmaster.slotpool;
 import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.ClusterOptions;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.JobManagerOptions;
 
 import javax.annotation.Nonnull;
 
@@ -32,13 +33,24 @@ public class DefaultSchedulerFactory implements SchedulerFactory {
 	@Nonnull
 	private final SlotSelectionStrategy slotSelectionStrategy;
 
+	private boolean isUsingMyScheduler;
+
 	public DefaultSchedulerFactory(@Nonnull SlotSelectionStrategy slotSelectionStrategy) {
 		this.slotSelectionStrategy = slotSelectionStrategy;
+	}
+
+	public DefaultSchedulerFactory(@Nonnull SlotSelectionStrategy slotSelectionStrategy,
+								   boolean isUsingMyScheduler) {
+		this.slotSelectionStrategy = slotSelectionStrategy;
+		this.isUsingMyScheduler = isUsingMyScheduler;
 	}
 
 	@Nonnull
 	@Override
 	public Scheduler createScheduler(@Nonnull SlotPool slotPool) {
+		if (isUsingMyScheduler) {
+			return new MySchedulerImpl(slotPool);
+		}
 		return new SchedulerImpl(slotSelectionStrategy, slotPool);
 	}
 
@@ -61,8 +73,15 @@ public class DefaultSchedulerFactory implements SchedulerFactory {
 		}
 	}
 
+	private static boolean isUsingMyScheduler(@Nonnull Configuration configuration) {
+		return configuration.getBoolean(JobManagerOptions.MY_EXECUTION_SLOT_ALLOCATOR);
+	}
+
 	public static DefaultSchedulerFactory fromConfiguration(
 		@Nonnull Configuration configuration) {
+		if (isUsingMyScheduler(configuration)) {
+			return new DefaultSchedulerFactory(selectSlotSelectionStrategy(configuration), true);
+		}
 		return new DefaultSchedulerFactory(selectSlotSelectionStrategy(configuration));
 	}
 }
