@@ -106,7 +106,7 @@ public class DefaultSchedulerFactory implements SchedulerNGFactory {
 			new DefaultExecutionVertexOperations(),
 			new ExecutionVertexVersioner(),
 //			new DefaultExecutionSlotAllocatorFactory(slotProviderStrategy)
-			createExecutionSlotAllocatorFactory(jobMasterConfiguration, slotProviderStrategy, slotProvider)
+			createExecutionSlotAllocatorFactory(jobMasterConfiguration, slotProviderStrategy, slotProvider, slotRequestTimeout)
 		);
 	}
 
@@ -125,11 +125,12 @@ public class DefaultSchedulerFactory implements SchedulerNGFactory {
 	static ExecutionSlotAllocatorFactory createExecutionSlotAllocatorFactory(
 		final Configuration configuration,
 		final SlotProviderStrategy slotProviderStrategy,
-		final SlotProvider slotProvider) {
+		final SlotProvider slotProvider,
+		final Time slotRequestTimeout) {
 		boolean isUsingMySlotProvider = configuration.getBoolean(JobManagerOptions.MY_EXECUTION_SLOT_ALLOCATOR);
 
 		if (isUsingMySlotProvider)
-			return new MyExecutionSlotAllocatorFactory(slotProvider);
+			return new MyExecutionSlotAllocatorFactory(slotProvider, slotRequestTimeout);
 		return new DefaultExecutionSlotAllocatorFactory(slotProviderStrategy);
 	}
 }

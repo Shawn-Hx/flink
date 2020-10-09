@@ -1,6 +1,9 @@
 package org.apache.flink.runtime.scheduler;
 
 import com.alibaba.fastjson.JSON;
+import org.apache.flink.api.common.time.Time;
+import org.apache.flink.runtime.jobmaster.LogicalSlot;
+import org.apache.flink.runtime.jobmaster.SlotRequestId;
 import org.apache.flink.runtime.jobmaster.slotpool.SlotProvider;
 import org.apache.flink.runtime.scheduler.newscheduler.Util;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
@@ -11,6 +14,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -21,9 +25,12 @@ public class MyExecutionSlotAllocator implements ExecutionSlotAllocator {
 
 	private final SlotProvider slotProvider;
 
-	public MyExecutionSlotAllocator(final SlotProvider slotProvider) {
+	private final Time slotRequestTimeout;
+
+	public MyExecutionSlotAllocator(final SlotProvider slotProvider, final Time slotRequestTimeout) {
 		LOG.info("[HX] Using my executionSlotAllocator");
 		this.slotProvider = slotProvider;
+		this.slotRequestTimeout = slotRequestTimeout;
 	}
 
 	private List<Integer> getPlacement() {
@@ -37,24 +44,49 @@ public class MyExecutionSlotAllocator implements ExecutionSlotAllocator {
 		} catch (IOException e) {
 			LOG.error("[HX] invoke python model error!");
 			LOG.error(e.getMessage());
+			return new ArrayList<>();
 		}
-		return null;
 	}
 
 	@Override
-	public List<SlotExecutionVertexAssignment> allocateSlotsFor(List<ExecutionVertexSchedulingRequirements> executionVertexSchedulingRequirements) {
-		List<SlotExecutionVertexAssignment> slotExecutionVertexAssignments =
-			new ArrayList<>(executionVertexSchedulingRequirements.size());
+	public List<SlotExecutionVertexAssignment> allocateSlotsFor(
+		List<ExecutionVertexSchedulingRequirements> executionVertexSchedulingRequirements) {
+
 		int maxParallelism = 1;
 		for (ExecutionVertexSchedulingRequirements e : executionVertexSchedulingRequirements) {
 			maxParallelism = Math.max(e.getExecutionVertexId().getSubtaskIndex() + 1, maxParallelism);
 		}
 		LOG.info("[HX] Job's max parallelism = {}", maxParallelism);
 
-		List<Integer> placement = getPlacement();
-		// TODO
+		List<SlotExecutionVertexAssignment> slotExecutionVertexAssignments =
+			new ArrayList<>(executionVertexSchedulingRequirements.size());
 
-		return null;
+		// TODO
+//		List<Integer> placement = getPlacement();
+//		assert placement.size() == executionVertexSchedulingRequirements.size();
+		List<Integer> placement = Arrays.asList(0, 1, 1, 0);	// [HX] for test
+		for (int i = 0; i < executionVertexSchedulingRequirements.size(); i++) {
+			final ExecutionVertexSchedulingRequirements schedulingRequirements =
+				executionVertexSchedulingRequirements.get(i);
+			final ExecutionVertexID executionVertexID = schedulingRequirements.getExecutionVertexId();
+			final SlotRequestId slotRequestId = new SlotRequestId();
+			final Integer resourceIndex = placement.get(i);
+			CompletableFuture<LogicalSlot> slotFuture =
+				slotProvider.allocateSlot(slotRequestId, resourceIndex, slotRequestTimeout);
+
+			SlotExecutionVertexAssignment slotExecutionVertexAssignment =
+				new SlotExecutionVertexAssignment(executionVertexID, slotFuture);
+
+			slotFuture.whenComplete((ignored, throwable) -> {
+				if (throwable != null) {
+					slotProvider.cancelSlotRequest(slotRequestId, null, throwable);
+				}
+			});
+
+			slotExecutionVertexAssignments.add(slotExecutionVertexAssignment);
+		}
+
+		return slotExecutionVertexAssignments;
 	}
 
 	@Override

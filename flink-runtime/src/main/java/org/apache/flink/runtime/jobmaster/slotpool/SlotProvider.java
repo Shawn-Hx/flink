@@ -107,13 +107,13 @@ public interface SlotProvider {
 	 * [HX] Allocate slot by new scheduler (MySchedulerImpl)
 	 *
 	 * @param slotRequestId identifying the slot request
-	 * @param resourceId the resource to place
+	 * @param resourceIndex the resource to place
 	 * @param allocationTimeout after which the allocation fails with a timeout exception
 	 * @return The future of the allocation
 	 */
 	default CompletableFuture<LogicalSlot> allocateSlot(
 		SlotRequestId slotRequestId,
-		Integer resourceId,
+		Integer resourceIndex,
 		Time allocationTimeout
 	) {
 		return null;
