@@ -135,7 +135,6 @@ public class MySchedulerImpl implements Scheduler {
 		});
 	}
 
-
 	private CompletableFuture<LogicalSlot> allocateSharedSlot(
 		SlotRequestId slotRequestId,
 		Integer resourceIndex,

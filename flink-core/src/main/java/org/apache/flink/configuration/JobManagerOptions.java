@@ -352,8 +352,10 @@ public class JobManagerOptions {
 	/**
 	 * [HX] self-defined execution slot allocator.
 	 */
+	@Documentation.Section(Documentation.Sections.ALL_JOB_MANAGER)
 	public static final ConfigOption<Boolean> MY_EXECUTION_SLOT_ALLOCATOR =
-		key("jobmanager.sheduler.my-execution-slot-allocator")
+		key("jobmanager.scheduler.my-execution-slot-allocator")
+			.booleanType()
 			.defaultValue(false)
 			.withDescription("Use my execution slot allocator or not");
 
