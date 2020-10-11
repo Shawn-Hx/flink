@@ -129,8 +129,9 @@ public class DefaultSchedulerFactory implements SchedulerNGFactory {
 		final Time slotRequestTimeout) {
 		boolean isUsingMySlotProvider = configuration.getBoolean(JobManagerOptions.MY_EXECUTION_SLOT_ALLOCATOR);
 
-		if (isUsingMySlotProvider)
+		if (isUsingMySlotProvider) {
 			return new MyExecutionSlotAllocatorFactory(slotProvider, slotRequestTimeout);
+		}
 		return new DefaultExecutionSlotAllocatorFactory(slotProviderStrategy);
 	}
 }

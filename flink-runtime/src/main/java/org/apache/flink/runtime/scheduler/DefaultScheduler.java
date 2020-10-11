@@ -19,7 +19,6 @@
 
 package org.apache.flink.runtime.scheduler;
 
-import com.alibaba.fastjson.JSON;
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
@@ -49,19 +48,30 @@ import org.apache.flink.runtime.scheduler.newscheduler.DSPGraph;
 import org.apache.flink.runtime.scheduler.newscheduler.Edge;
 import org.apache.flink.runtime.scheduler.newscheduler.Operator;
 import org.apache.flink.runtime.scheduler.newscheduler.Util;
-import org.apache.flink.runtime.scheduler.strategy.*;
+import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
+import org.apache.flink.runtime.scheduler.strategy.SchedulingExecutionVertex;
+import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategy;
+import org.apache.flink.runtime.scheduler.strategy.SchedulingStrategyFactory;
+import org.apache.flink.runtime.scheduler.strategy.SchedulingTopology;
 import org.apache.flink.runtime.shuffle.ShuffleMaster;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
 import org.apache.flink.util.ExceptionUtils;
-
 import org.apache.flink.util.IterableUtils;
+
+import com.alibaba.fastjson.JSON;
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
 
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
@@ -164,7 +174,7 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 	// ------------------------------------------------------------------------
 
 	/**
-	 * [HX] export executionGraph
+	 * [HX] export executionGraph.
 	 */
 	private void exportExecutionGraph() {
 		int maxParallelism = 0;

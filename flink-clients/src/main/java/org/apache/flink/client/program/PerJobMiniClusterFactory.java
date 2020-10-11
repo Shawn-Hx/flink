@@ -36,7 +36,6 @@ import org.apache.flink.runtime.minicluster.RpcServiceSharing;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequestGateway;
 import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
-import org.apache.flink.util.MathUtils;
 import org.apache.flink.util.SerializedValue;
 
 import org.slf4j.Logger;
