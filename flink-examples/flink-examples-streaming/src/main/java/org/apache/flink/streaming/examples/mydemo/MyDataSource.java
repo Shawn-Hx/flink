@@ -22,21 +22,29 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 
 /**
- * My Simple DataSource.
+ * My DataSource.
  */
 public class MyDataSource implements SourceFunction<Tuple2<String, Integer>> {
 	private volatile boolean running = true;
+	private final TimeUnit timeunit;
+	private final long timeout;
+
+	public MyDataSource(TimeUnit timeunit, long timeout) {
+		this.timeunit = timeunit;
+		this.timeout = timeout;
+	}
 
 	@Override
 	public void run(SourceContext<Tuple2<String, Integer>> sourceContext) throws Exception {
 		Random random = new Random();
 		while (running) {
-			Thread.sleep(1000);
+			this.timeunit.sleep(timeout);
 			String key = "class" + (char) ('A' + random.nextInt(3));
 			int value = random.nextInt(5) + 1;
-			System.out.printf("Emit:\t(%s, %d)\n", key, value);
+			System.out.printf("Emit:\t(%s, %d)%n", key, value);
 			sourceContext.collect(Tuple2.of(key, value));
 		}
 	}
