@@ -207,7 +207,6 @@ public class MySchedulerImpl implements Scheduler {
 			allocationTimeout);
 	}
 
-
 	@Override
 	public void cancelSlotRequest(SlotRequestId slotRequestId, @Nullable SlotSharingGroupId slotSharingGroupId, Throwable cause) {
 		log.error("[HX] MySchedulerImpl.cancelSlotRequest() be invoked.");

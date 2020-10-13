@@ -18,21 +18,28 @@
 
 package org.apache.flink.runtime.scheduler.newscheduler;
 
+import com.alibaba.fastjson.annotation.JSONField;
+
 /**
- * New scheduler utilities.
+ * Resource.
  */
-public class Util {
+public class Resource {
+	@JSONField
+	public String id;
+	@JSONField
+	public int cpu;
+	@JSONField
+	public int memory;
+	@JSONField
+	public String taskManager;
+	@JSONField
+	public String host;
 
-	public static final String LINE_SPLITTER = "\n";
-
-	public static final String DSP_GRAPH_FILE = "/home/huangxiao/Desktop/flink_graph.json";
-
-	public static final String RESOURCE_FILE = "/home/huangxiao/Desktop/slots.json";
-
-	public static final String PYTHON = "/home/huangxiao/gitProjects/DRL-Scheduler/venv/bin/python";
-
-	public static final String SCRIPT_FILE = "/home/huangxiao/gitProjects/DRL-Scheduler/eval.py";
-
-//	public static final String MODEL_FILE = "";
+	public static Resource defaultResource() {
+		Resource resource = new Resource();
+		resource.cpu = 100;
+		resource.memory = 8192;
+		return resource;
+	}
 
 }

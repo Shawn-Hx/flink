@@ -35,6 +35,8 @@ import org.apache.flink.runtime.resourcemanager.WorkerResourceSpec;
 import org.apache.flink.runtime.resourcemanager.exceptions.ResourceManagerException;
 import org.apache.flink.runtime.resourcemanager.exceptions.UnfulfillableSlotRequestException;
 import org.apache.flink.runtime.resourcemanager.registration.TaskExecutorConnection;
+import org.apache.flink.runtime.scheduler.newscheduler.Resource;
+import org.apache.flink.runtime.scheduler.newscheduler.Util;
 import org.apache.flink.runtime.taskexecutor.SlotReport;
 import org.apache.flink.runtime.taskexecutor.SlotStatus;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
@@ -45,12 +47,15 @@ import org.apache.flink.util.MathUtils;
 import org.apache.flink.util.OptionalConsumer;
 import org.apache.flink.util.Preconditions;
 
+import com.alibaba.fastjson.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -701,6 +706,25 @@ public class SlotManagerImpl implements SlotManager {
 			resourceProfile,
 			taskManagerConnection);
 		slots.put(slotId, slot);
+		// [HX] export slots info
+		LOG.info("[HX] begin to write slot {}", slotId);
+		try {
+			Resource resource = Resource.defaultResource();
+			resource.id	= slotId.toString();
+            resource.taskManager = taskManagerConnection.getTaskExecutorGateway().getAddress();
+            resource.host = taskManagerConnection.getTaskExecutorGateway().getHostname();
+			String slotJSONString = JSON.toJSONString(resource);
+			synchronized (Util.RESOURCE_FILE) {
+				FileWriter writer = new FileWriter(Util.RESOURCE_FILE, true);
+				writer.append(slotJSONString);
+				writer.append(Util.LINE_SPLITTER);
+				writer.flush();
+				writer.close();
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+			LOG.info("[HX] export slot {} failed.", slotId);
+		}
 		return slot;
 	}
 

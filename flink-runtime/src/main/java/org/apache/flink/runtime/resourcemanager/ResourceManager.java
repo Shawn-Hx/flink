@@ -65,6 +65,7 @@ import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
+import org.apache.flink.runtime.scheduler.newscheduler.Util;
 import org.apache.flink.runtime.taskexecutor.FileType;
 import org.apache.flink.runtime.taskexecutor.SlotReport;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
@@ -75,6 +76,8 @@ import org.apache.flink.util.FlinkException;
 
 import javax.annotation.Nullable;
 
+import java.io.File;
+import java.io.FileWriter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -214,6 +217,16 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
 			onFatalError(exception);
 			throw exception;
 		}
+		// [HX] clear slots info here
+		File resourceFile = new File(Util.RESOURCE_FILE);
+		if (!resourceFile.exists()) {
+			resourceFile.createNewFile();
+		}
+		FileWriter writer = new FileWriter(resourceFile);
+		writer.write("");
+		writer.flush();
+		writer.close();
+		log.info("[HX] clear the content of slots.json");
 	}
 
 	private void startResourceManagerServices() throws Exception {
