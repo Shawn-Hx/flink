@@ -122,9 +122,16 @@ public class SlotManagerConfiguration {
 		boolean waitResultConsumedBeforeRelease =
 			configuration.getBoolean(ResourceManagerOptions.TASK_MANAGER_RELEASE_WHEN_RESULT_CONSUMED);
 
-		boolean evenlySpreadOutSlots = configuration.getBoolean(ClusterOptions.EVENLY_SPREAD_OUT_SLOTS_STRATEGY);
-		final SlotMatchingStrategy slotMatchingStrategy = evenlySpreadOutSlots ?
-			LeastUtilizationSlotMatchingStrategy.INSTANCE : AnyMatchingSlotMatchingStrategy.INSTANCE;
+		// [HX] my strategy
+		boolean alwaysFirstSlot = configuration.getBoolean(ClusterOptions.ALWAYS_FIRST_SLOT_STRATEGY);
+		final SlotMatchingStrategy slotMatchingStrategy;
+		if (alwaysFirstSlot) {
+			slotMatchingStrategy = AlwaysFirstSlotMatchingStrategy.INSTANCE;
+		} else {
+			boolean evenlySpreadOutSlots = configuration.getBoolean(ClusterOptions.EVENLY_SPREAD_OUT_SLOTS_STRATEGY);
+			slotMatchingStrategy = evenlySpreadOutSlots ?
+					LeastUtilizationSlotMatchingStrategy.INSTANCE : AnyMatchingSlotMatchingStrategy.INSTANCE;
+		}
 
 		int numSlotsPerWorker = configuration.getInteger(TaskManagerOptions.NUM_TASK_SLOTS);
 

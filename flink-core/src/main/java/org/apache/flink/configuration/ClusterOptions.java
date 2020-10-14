@@ -81,6 +81,16 @@ public class ClusterOptions {
 					"the slots evenly across all available %s.", code("TaskExecutors"))
 				.build());
 
+	/**
+	 * [HX] Always pick the first free slot.
+	 */
+	@Documentation.Section(Documentation.Sections.EXPERT_SCHEDULING)
+	public static final ConfigOption<Boolean> ALWAYS_FIRST_SLOT_STRATEGY = ConfigOptions
+		.key("cluster.always-first-slot")
+		.booleanType()
+		.defaultValue(false)
+		.withDescription("Always pick the first free slot to satisfy the slot request");
+
 	@Documentation.Section(Documentation.Sections.EXPERT_CLUSTER)
 	public static final ConfigOption<Boolean> HALT_ON_FATAL_ERROR =
 		key("cluster.processes.halt-on-fatal-error")

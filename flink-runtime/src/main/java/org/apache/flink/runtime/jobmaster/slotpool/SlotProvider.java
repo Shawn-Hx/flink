@@ -104,7 +104,7 @@ public interface SlotProvider {
 		Throwable cause);
 
 	/**
-	 * [HX] Allocate slot by new scheduler (MySchedulerImpl)
+	 * [HX] Allocate slot by new scheduler (MySchedulerImpl).
 	 *
 	 * @param slotRequestId identifying the slot request
 	 * @param resourceIndex the resource to place
@@ -118,5 +118,12 @@ public interface SlotProvider {
 	) {
 		return null;
 	}
+
+	/**
+	 * [HX] Allocate a useless slot, this slot will not be used by this job.
+	 * [HX] But in order to make all vertices get their proper slot, we should
+	 * [HX] request this useless slot to make the request order correct.
+	 */
+	default void allocateUselessSlot(Time allocationTimeout) {}
 
 }

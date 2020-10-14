@@ -95,6 +95,12 @@ public class MySchedulerImpl implements Scheduler {
 	}
 
 	@Override
+	public void allocateUselessSlot(Time allocationTimeout) {
+		SlotRequestId slotRequestId = new SlotRequestId();
+		requestNewAllocatedSlot(slotRequestId, allocationTimeout);
+	}
+
+	@Override
 	public CompletableFuture<LogicalSlot> allocateSlot(
 			SlotRequestId slotRequestId,
 			Integer resourceIndex,

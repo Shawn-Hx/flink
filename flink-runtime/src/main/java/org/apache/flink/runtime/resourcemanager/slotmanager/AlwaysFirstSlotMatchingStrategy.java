@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,25 +16,26 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.scheduler.newscheduler;
+package org.apache.flink.runtime.resourcemanager.slotmanager;
+
+import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
+import org.apache.flink.runtime.instance.InstanceID;
+
+import java.util.Collection;
+import java.util.Optional;
+import java.util.function.Function;
 
 /**
- * New scheduler utilities.
+ * [HX] Always pick the first slot.
  */
-public class Util {
+public enum AlwaysFirstSlotMatchingStrategy implements SlotMatchingStrategy {
+	INSTANCE;
 
-	public static final String LINE_SPLITTER = "\n";
-
-	public static final String DSP_GRAPH_FILE = "/home/huangxiao/Desktop/flink_graph.json";
-
-	public static final String RESOURCE_FILE = "/home/huangxiao/Desktop/slots.json";
-
-	public static final String PLACEMENT_FILE = "/home/huangxiao/Desktop/placement.json";
-
-	public static final String PYTHON = "/home/huangxiao/gitProjects/DRL-Scheduler/venv/bin/python";
-
-	public static final String SCRIPT_FILE = "/home/huangxiao/gitProjects/DRL-Scheduler/eval.py";
-
-//	public static final String MODEL_FILE = "";
-
+	@Override
+	public <T extends TaskManagerSlotInformation> Optional<T> findMatchingSlot(
+			ResourceProfile requestedProfile,
+			Collection<T> freeSlots,
+			Function<InstanceID, Integer> numberRegisteredSlotsLookup) {
+		return freeSlots.stream().findFirst();
+	}
 }

@@ -30,11 +30,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -55,6 +61,21 @@ public class MyExecutionSlotAllocator implements ExecutionSlotAllocator {
 	}
 
 	private List<Integer> getPlacement() {
+		// try to get placement from file first
+		File placementFile = new File(Util.PLACEMENT_FILE);
+		if (placementFile.exists()) {
+			try {
+				BufferedReader br = new BufferedReader(new FileReader(placementFile));
+				String line = br.readLine();
+				if (line != null) {
+					return JSON.parseArray(line, Integer.class);
+				}
+			} catch (IOException e) {
+				LOG.error("[HX] get placement from file error!");
+				e.printStackTrace();
+			}
+		}
+		// if file don't exist or the content is null, get placement from python model
 		try {
 			Process process = Runtime.getRuntime().exec(new String[]{Util.PYTHON, Util.SCRIPT_FILE});
 			BufferedReader br = new BufferedReader(new InputStreamReader(process.getInputStream()));
@@ -64,7 +85,7 @@ public class MyExecutionSlotAllocator implements ExecutionSlotAllocator {
 			return placement;
 		} catch (IOException e) {
 			LOG.error("[HX] invoke python model error!");
-			LOG.error(e.getMessage());
+			e.printStackTrace();
 			return new ArrayList<>();
 		}
 	}
@@ -79,35 +100,42 @@ public class MyExecutionSlotAllocator implements ExecutionSlotAllocator {
 		}
 		LOG.info("[HX] Job's max parallelism = {}", maxParallelism);
 
-		List<SlotExecutionVertexAssignment> slotExecutionVertexAssignments =
-			new ArrayList<>(executionVertexSchedulingRequirements.size());
+		SlotExecutionVertexAssignment[] res = new SlotExecutionVertexAssignment[executionVertexSchedulingRequirements.size()];
 
-		// TODO
-//		List<Integer> placement = getPlacement();
-//		assert placement.size() == executionVertexSchedulingRequirements.size();
-		List<Integer> placement = Arrays.asList(0, 1, 1, 0);	// [HX] for test
-		for (int i = 0; i < executionVertexSchedulingRequirements.size(); i++) {
-			final ExecutionVertexSchedulingRequirements schedulingRequirements =
-				executionVertexSchedulingRequirements.get(i);
-			final ExecutionVertexID executionVertexID = schedulingRequirements.getExecutionVertexId();
-			final SlotRequestId slotRequestId = new SlotRequestId();
-			final Integer resourceIndex = placement.get(i);
-			CompletableFuture<LogicalSlot> slotFuture =
-				slotProvider.allocateSlot(slotRequestId, resourceIndex, slotRequestTimeout);
+		List<Integer> placement = getPlacement();
+		assert placement.size() == executionVertexSchedulingRequirements.size();
+		Map<Integer, Set<ExecutionVertexSchedulingRequirements>> map = new TreeMap<>();
+		for (int i = 0; i < placement.size(); i++) {
+			map.computeIfAbsent(placement.get(i), k -> new HashSet<>())
+					.add(executionVertexSchedulingRequirements.get(i));
+		}
+		int lastSlotIndex = -1;
+		for (Map.Entry<Integer, Set<ExecutionVertexSchedulingRequirements>> entry: map.entrySet()) {
+			int resourceIndex = entry.getKey();
+			while (lastSlotIndex + 1 != resourceIndex) {
+				slotProvider.allocateUselessSlot(slotRequestTimeout);
+				lastSlotIndex++;
+			}
+			for (ExecutionVertexSchedulingRequirements schedulingRequirements : entry.getValue()) {
+				final ExecutionVertexID executionVertexID = schedulingRequirements.getExecutionVertexId();
+				final SlotRequestId slotRequestId = new SlotRequestId();
+				CompletableFuture<LogicalSlot> slotFuture =
+						slotProvider.allocateSlot(slotRequestId, resourceIndex, slotRequestTimeout);
 
-			SlotExecutionVertexAssignment slotExecutionVertexAssignment =
-				new SlotExecutionVertexAssignment(executionVertexID, slotFuture);
+				SlotExecutionVertexAssignment slotExecutionVertexAssignment =
+						new SlotExecutionVertexAssignment(executionVertexID, slotFuture);
 
-			slotFuture.whenComplete((ignored, throwable) -> {
-				if (throwable != null) {
-					slotProvider.cancelSlotRequest(slotRequestId, null, throwable);
-				}
-			});
-
-			slotExecutionVertexAssignments.add(slotExecutionVertexAssignment);
+				slotFuture.whenComplete((ignored, throwable) -> {
+					if (throwable != null) {
+						slotProvider.cancelSlotRequest(slotRequestId, null, throwable);
+					}
+				});
+				res[executionVertexSchedulingRequirements.indexOf(schedulingRequirements)] = slotExecutionVertexAssignment;
+			}
+			lastSlotIndex = resourceIndex;
 		}
 
-		return slotExecutionVertexAssignments;
+		return Arrays.asList(res);
 	}
 
 	@Override
