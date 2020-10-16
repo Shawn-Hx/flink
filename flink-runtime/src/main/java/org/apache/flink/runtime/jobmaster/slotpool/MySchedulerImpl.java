@@ -97,6 +97,7 @@ public class MySchedulerImpl implements Scheduler {
 	@Override
 	public void allocateUselessSlot(Time allocationTimeout) {
 		SlotRequestId slotRequestId = new SlotRequestId();
+//		System.out.println("HX debug: allocate useless slot for " + slotRequestId.toString());
 		requestNewAllocatedSlot(slotRequestId, allocationTimeout);
 	}
 
@@ -106,7 +107,7 @@ public class MySchedulerImpl implements Scheduler {
 			Integer resourceIndex,
 			Time allocationTimeout) {
 		componentMainThreadExecutor.assertRunningInMainThread();
-
+//		System.out.println("HX debug: allocate useful slot for " + slotRequestId.toString());
 		final CompletableFuture<LogicalSlot> allocationResultFuture = new CompletableFuture<>();
 		internalAllocateSlot(
 			allocationResultFuture,

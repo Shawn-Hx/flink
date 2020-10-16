@@ -64,10 +64,10 @@ public class MyExecutionSlotAllocator implements ExecutionSlotAllocator {
 		// try to get placement from file first
 		File placementFile = new File(Util.PLACEMENT_FILE);
 		if (placementFile.exists()) {
-			try {
-				BufferedReader br = new BufferedReader(new FileReader(placementFile));
+			try (BufferedReader br = new BufferedReader(new FileReader(placementFile))) {
 				String line = br.readLine();
 				if (line != null) {
+					LOG.info("[HX] get placement from file");
 					return JSON.parseArray(line, Integer.class);
 				}
 			} catch (IOException e) {
@@ -77,12 +77,11 @@ public class MyExecutionSlotAllocator implements ExecutionSlotAllocator {
 		}
 		// if file don't exist or the content is null, get placement from python model
 		try {
+			LOG.info("[HX] get placement from model");
 			Process process = Runtime.getRuntime().exec(new String[]{Util.PYTHON, Util.SCRIPT_FILE});
 			BufferedReader br = new BufferedReader(new InputStreamReader(process.getInputStream()));
 			String placementStr = br.readLine();
-			List<Integer> placement = JSON.parseArray(placementStr, Integer.class);
-			LOG.info("[HX] placement: {}", placement);
-			return placement;
+			return JSON.parseArray(placementStr, Integer.class);
 		} catch (IOException e) {
 			LOG.error("[HX] invoke python model error!");
 			e.printStackTrace();
@@ -103,6 +102,7 @@ public class MyExecutionSlotAllocator implements ExecutionSlotAllocator {
 		SlotExecutionVertexAssignment[] res = new SlotExecutionVertexAssignment[executionVertexSchedulingRequirements.size()];
 
 		List<Integer> placement = getPlacement();
+		LOG.info("[HX] placement: {}", placement);
 		assert placement.size() == executionVertexSchedulingRequirements.size();
 		Map<Integer, Set<ExecutionVertexSchedulingRequirements>> map = new TreeMap<>();
 		for (int i = 0; i < placement.size(); i++) {

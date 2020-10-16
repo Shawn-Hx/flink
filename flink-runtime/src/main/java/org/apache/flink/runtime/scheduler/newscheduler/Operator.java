@@ -40,4 +40,10 @@ public class Operator {
 	@JSONField
 	public int memory;
 
+	public Operator() {
+		// default value
+		this.cpu = 100;
+		this.memory = 128;
+	}
+
 }

@@ -228,10 +228,8 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 		dspGraph.maxParallelism = maxParallelism;
 
 		String graphJSONString = JSON.toJSONString(dspGraph, true);
-		try {
-			FileWriter writer = new FileWriter(Util.DSP_GRAPH_FILE);
+		try (FileWriter writer = new FileWriter(Util.DSP_GRAPH_FILE)) {
 			writer.write(graphJSONString);
-			writer.close();
 			log.info("[HX] export DAG info to " + Util.DSP_GRAPH_FILE);
 		} catch (IOException e) {
 			e.printStackTrace();
