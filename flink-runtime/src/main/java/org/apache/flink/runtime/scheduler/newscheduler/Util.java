@@ -23,17 +23,19 @@ package org.apache.flink.runtime.scheduler.newscheduler;
  */
 public class Util {
 
-	public static final String LINE_SPLITTER = "\n";
+	public static final String HOME_DIR = System.getProperty("user.home");
 
-	public static final String DSP_GRAPH_FILE = "/home/huangxiao/Desktop/flink_graph.json";
+	public static final String LINE_SPLITTER = System.getProperty("line.separator");
 
-	public static final String RESOURCE_FILE = "/home/huangxiao/Desktop/slots.json";
+	public static final String DSP_GRAPH_FILE = HOME_DIR + "/Desktop/flink_graph.json";
 
-	public static final String PLACEMENT_FILE = "/home/huangxiao/Desktop/placement.json";
+	public static final String RESOURCE_FILE = HOME_DIR + "/Desktop/slots.json";
 
-	public static final String PYTHON = "/home/huangxiao/gitProjects/DRL-Scheduler/venv/bin/python";
+	public static final String PLACEMENT_FILE = HOME_DIR + "/Desktop/placement.json";
 
-	public static final String SCRIPT_FILE = "/home/huangxiao/gitProjects/DRL-Scheduler/eval.py";
+	public static final String PYTHON = HOME_DIR + "/gitProjects/DRL-Scheduler/venv/bin/python";
+
+	public static final String SCRIPT_FILE = HOME_DIR + "/gitProjects/DRL-Scheduler/eval.py";
 
 //	public static final String MODEL_FILE = "";
 

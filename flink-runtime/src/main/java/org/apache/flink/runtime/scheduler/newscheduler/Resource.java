@@ -37,8 +37,8 @@ public class Resource {
 
 	public static Resource defaultResource() {
 		Resource resource = new Resource();
-		resource.cpu = 100;
-		resource.memory = 8192;
+		resource.cpu = 30;
+		resource.memory = 1536;
 		return resource;
 	}
 

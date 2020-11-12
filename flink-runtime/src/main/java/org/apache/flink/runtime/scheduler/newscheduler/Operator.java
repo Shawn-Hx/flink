@@ -42,8 +42,8 @@ public class Operator {
 
 	public Operator() {
 		// default value
-		this.cpu = 100;
-		this.memory = 128;
+		this.cpu = 20;
+		this.memory = 64;
 	}
 
 }

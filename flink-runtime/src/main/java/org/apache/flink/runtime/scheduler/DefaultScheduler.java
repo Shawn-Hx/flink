@@ -230,6 +230,7 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
 		String graphJSONString = JSON.toJSONString(dspGraph, true);
 		try (FileWriter writer = new FileWriter(Util.DSP_GRAPH_FILE)) {
 			writer.write(graphJSONString);
+			writer.flush();
 			log.info("[HX] export DAG info to " + Util.DSP_GRAPH_FILE);
 		} catch (IOException e) {
 			e.printStackTrace();
