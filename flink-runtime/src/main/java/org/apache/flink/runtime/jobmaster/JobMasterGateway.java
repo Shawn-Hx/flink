@@ -289,4 +289,7 @@ public interface JobMasterGateway
             OperatorID operatorId,
             SerializedValue<CoordinationRequest> serializedRequest,
             @RpcTimeout Time timeout);
+
+
+    void reportNewNodeOK(long migrateId);
 }

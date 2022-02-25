@@ -18,31 +18,28 @@
 
 package org.apache.flink.runtime.io.network.partition.consumer;
 
+import org.apache.flink.runtime.io.network.ConnectionID;
+import org.apache.flink.runtime.io.network.ConnectionManager;
 import org.apache.flink.runtime.io.network.TaskEventPublisher;
 import org.apache.flink.runtime.io.network.metrics.InputChannelMetrics;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
 
-import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * An input channel reads recovered state from previous unaligned checkpoint snapshots and then
  * converts into {@link LocalInputChannel} finally.
  */
 public class LocalRecoveredInputChannel extends RecoveredInputChannel {
-    private final ResultPartitionManager partitionManager;
-    private final TaskEventPublisher taskEventPublisher;
-
-    LocalRecoveredInputChannel(
+    public LocalRecoveredInputChannel(
             SingleInputGate inputGate,
             int channelIndex,
             ResultPartitionID partitionId,
+            ConnectionID connectionId,
             ResultPartitionManager partitionManager,
             TaskEventPublisher taskEventPublisher,
-            int initialBackOff,
-            int maxBackoff,
-            int networkBuffersPerChannel,
-            InputChannelMetrics metrics) {
+            ConnectionManager connectionManager,
+            int initialBackOff, int maxBackoff, int networkBuffersPerChannel, InputChannelMetrics metrics) {
         super(
                 inputGate,
                 channelIndex,
@@ -51,24 +48,15 @@ public class LocalRecoveredInputChannel extends RecoveredInputChannel {
                 maxBackoff,
                 metrics.getNumBytesInLocalCounter(),
                 metrics.getNumBuffersInLocalCounter(),
-                networkBuffersPerChannel);
-
-        this.partitionManager = checkNotNull(partitionManager);
-        this.taskEventPublisher = checkNotNull(taskEventPublisher);
+                networkBuffersPerChannel,
+                connectionId,
+                connectionManager,
+                partitionManager,
+                taskEventPublisher);
     }
 
     @Override
     protected InputChannel toInputChannelInternal() {
-        return new LocalInputChannel(
-                inputGate,
-                getChannelIndex(),
-                partitionId,
-                partitionManager,
-                taskEventPublisher,
-                initialBackoff,
-                maxBackoff,
-                numBytesIn,
-                numBuffersIn,
-                channelStateWriter);
+        return toLocalInputChannelInternal();
     }
 }

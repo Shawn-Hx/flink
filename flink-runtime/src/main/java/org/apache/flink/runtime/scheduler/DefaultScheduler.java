@@ -22,12 +22,15 @@ package org.apache.flink.runtime.scheduler;
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
+import org.apache.flink.runtime.checkpoint.JobManagerTaskRestore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
+import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.FutureUtils;
 import org.apache.flink.runtime.concurrent.ScheduledExecutor;
 import org.apache.flink.runtime.execution.ExecutionState;
+import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
 import org.apache.flink.runtime.executiongraph.JobStatusListener;
@@ -81,18 +84,12 @@ import static org.apache.flink.util.Preconditions.checkState;
 /** The future default scheduler. */
 public class DefaultScheduler extends SchedulerBase implements SchedulerOperations {
 
+    public final SchedulingStrategy schedulingStrategy;
     private final Logger log;
-
     private final ClassLoader userCodeLoader;
-
     private final ExecutionSlotAllocator executionSlotAllocator;
-
     private final ExecutionFailureHandler executionFailureHandler;
-
     private final ScheduledExecutor delayExecutor;
-
-    private final SchedulingStrategy schedulingStrategy;
-
     private final ExecutionVertexOperations executionVertexOperations;
 
     private final Set<ExecutionVertexID> verticesWaitingForRestart;
@@ -165,6 +162,53 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
     // ------------------------------------------------------------------------
     // SchedulerNG
     // ------------------------------------------------------------------------
+
+    private static Map<ExecutionVertexID, ExecutionVertexDeploymentOption>
+    groupDeploymentOptionsByVertexId(
+            final Collection<ExecutionVertexDeploymentOption>
+                    executionVertexDeploymentOptions) {
+        return executionVertexDeploymentOptions.stream()
+                .collect(
+                        Collectors.toMap(
+                                ExecutionVertexDeploymentOption::getExecutionVertexId,
+                                Function.identity()));
+    }
+
+    private static List<DeploymentHandle> createDeploymentHandles(
+            final Map<ExecutionVertexID, ExecutionVertexVersion> requiredVersionByVertex,
+            final Map<ExecutionVertexID, ExecutionVertexDeploymentOption> deploymentOptionsByVertex,
+            final List<SlotExecutionVertexAssignment> slotExecutionVertexAssignments) {
+
+        return slotExecutionVertexAssignments.stream()
+                .map(
+                        slotExecutionVertexAssignment -> {
+                            final ExecutionVertexID executionVertexId =
+                                    slotExecutionVertexAssignment.getExecutionVertexId();
+                            return new DeploymentHandle(
+                                    requiredVersionByVertex.get(executionVertexId),
+                                    deploymentOptionsByVertex.get(executionVertexId),
+                                    slotExecutionVertexAssignment);
+                        })
+                .collect(Collectors.toList());
+    }
+
+    private static void propagateIfNonNull(final Throwable throwable) {
+        if (throwable != null) {
+            throw new CompletionException(throwable);
+        }
+    }
+
+    private static Throwable maybeWrapWithNoResourceAvailableException(final Throwable failure) {
+        final Throwable strippedThrowable = ExceptionUtils.stripCompletionException(failure);
+        if (strippedThrowable instanceof TimeoutException) {
+            return new NoResourceAvailableException(
+                    "Could not allocate the required slot within slot request timeout. "
+                            + "Please make sure that the cluster has enough resources.",
+                    failure);
+        } else {
+            return failure;
+        }
+    }
 
     @Override
     protected long getNumberOfRestarts() {
@@ -244,6 +288,36 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
         } else {
             failJob(failureHandlingResult.getError(), failureHandlingResult.getTimestamp());
         }
+    }
+
+    public Execution migrateTask(
+            ExecutionVertexID vertexID,
+            JobManagerTaskRestore jobManagerTaskRestore,
+            ResourceID resourceID,
+            BiFunction<ExecutionVertexID, ResourceID, SharedSlot> sharedSlotRetriever) {
+        ExecutionVertex executionVertex = getExecutionVertex(vertexID);
+        // reset for new execution
+        Execution oldExecution = executionVertex.updateForNewExecution();
+        if (jobManagerTaskRestore != null) {
+            executionVertex.getCurrentExecutionAttempt().setInitialState(jobManagerTaskRestore);
+        }
+        // decide where to deploy
+        SlotExecutionVertexAssignment slotExecutionVertexAssignment =
+                ((SlotSharingExecutionSlotAllocator) executionSlotAllocator)
+                        .reallocateSlot(vertexID,resourceID,sharedSlotRetriever);
+        // transition state to SCHEDULED
+        executionVertex.getCurrentExecutionAttempt()
+                .transitionState(ExecutionState.SCHEDULED);
+        // create deploymentHandle
+        DeploymentHandle deploymentHandle = new DeploymentHandle(
+                executionVertexVersioner.recordModification(vertexID),
+                new ExecutionVertexDeploymentOption(vertexID,new DeploymentOption(false)),
+                slotExecutionVertexAssignment
+        );
+        // wait to sync
+        waitForAllSlotsAndDeploy(List.of(deploymentHandle));
+
+        return oldExecution;
     }
 
     private void restartTasksWithDelay(final FailureHandlingResult failureHandlingResult) {
@@ -335,10 +409,6 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
         schedulingStrategy.onPartitionConsumable(partitionId);
     }
 
-    // ------------------------------------------------------------------------
-    // SchedulerOperations
-    // ------------------------------------------------------------------------
-
     @Override
     public void allocateSlotsAndDeploy(
             final List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions) {
@@ -383,41 +453,12 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
                                         v.getExecutionState()));
     }
 
-    private static Map<ExecutionVertexID, ExecutionVertexDeploymentOption>
-            groupDeploymentOptionsByVertexId(
-                    final Collection<ExecutionVertexDeploymentOption>
-                            executionVertexDeploymentOptions) {
-        return executionVertexDeploymentOptions.stream()
-                .collect(
-                        Collectors.toMap(
-                                ExecutionVertexDeploymentOption::getExecutionVertexId,
-                                Function.identity()));
-    }
-
     private List<SlotExecutionVertexAssignment> allocateSlots(
             final List<ExecutionVertexDeploymentOption> executionVertexDeploymentOptions) {
         return executionSlotAllocator.allocateSlotsFor(
                 executionVertexDeploymentOptions.stream()
                         .map(ExecutionVertexDeploymentOption::getExecutionVertexId)
                         .collect(Collectors.toList()));
-    }
-
-    private static List<DeploymentHandle> createDeploymentHandles(
-            final Map<ExecutionVertexID, ExecutionVertexVersion> requiredVersionByVertex,
-            final Map<ExecutionVertexID, ExecutionVertexDeploymentOption> deploymentOptionsByVertex,
-            final List<SlotExecutionVertexAssignment> slotExecutionVertexAssignments) {
-
-        return slotExecutionVertexAssignments.stream()
-                .map(
-                        slotExecutionVertexAssignment -> {
-                            final ExecutionVertexID executionVertexId =
-                                    slotExecutionVertexAssignment.getExecutionVertexId();
-                            return new DeploymentHandle(
-                                    requiredVersionByVertex.get(executionVertexId),
-                                    deploymentOptionsByVertex.get(executionVertexId),
-                                    slotExecutionVertexAssignment);
-                        })
-                .collect(Collectors.toList());
     }
 
     private void waitForAllSlotsAndDeploy(final List<DeploymentHandle> deploymentHandles) {
@@ -455,12 +496,6 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
             }
             return null;
         };
-    }
-
-    private static void propagateIfNonNull(final Throwable throwable) {
-        if (throwable != null) {
-            throw new CompletionException(throwable);
-        }
     }
 
     private BiFunction<LogicalSlot, Throwable, Void> assignResourceOrHandleError(
@@ -505,18 +540,6 @@ public class DefaultScheduler extends SchedulerBase implements SchedulerOperatio
     private void handleTaskDeploymentFailure(
             final ExecutionVertexID executionVertexId, final Throwable error) {
         executionVertexOperations.markFailed(getExecutionVertex(executionVertexId), error);
-    }
-
-    private static Throwable maybeWrapWithNoResourceAvailableException(final Throwable failure) {
-        final Throwable strippedThrowable = ExceptionUtils.stripCompletionException(failure);
-        if (strippedThrowable instanceof TimeoutException) {
-            return new NoResourceAvailableException(
-                    "Could not allocate the required slot within slot request timeout. "
-                            + "Please make sure that the cluster has enough resources.",
-                    failure);
-        } else {
-            return failure;
-        }
     }
 
     private BiFunction<Object, Throwable, Void> deployOrHandleError(

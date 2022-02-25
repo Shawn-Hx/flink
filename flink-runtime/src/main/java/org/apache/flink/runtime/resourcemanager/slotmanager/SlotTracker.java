@@ -28,7 +28,7 @@ import javax.annotation.Nullable;
 import java.util.Collection;
 
 /** Tracks slots and their {@link SlotState}. */
-interface SlotTracker {
+public interface SlotTracker {
 
     /**
      * Registers the given listener with this tracker.

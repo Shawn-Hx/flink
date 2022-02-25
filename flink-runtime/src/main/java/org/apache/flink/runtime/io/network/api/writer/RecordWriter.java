@@ -19,11 +19,13 @@
 package org.apache.flink.runtime.io.network.api.writer;
 
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.io.IOReadableWritable;
 import org.apache.flink.core.memory.DataOutputSerializer;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.io.AvailabilityProvider;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
+import org.apache.flink.runtime.migrator.EndBarrierMarker;
 import org.apache.flink.util.XORShiftRandom;
 
 import org.slf4j.Logger;
@@ -33,6 +35,7 @@ import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 
@@ -98,13 +101,35 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
         }
     }
 
+    ArrayList<Tuple2<ByteBuffer, Integer>> emitRecordBuffers = new ArrayList<>();
+
+    private ByteBuffer cloneByteBuffer(ByteBuffer original) {
+        ByteBuffer clone = ByteBuffer.allocate(original.capacity());
+        original.rewind();
+        clone.put(original);
+        original.rewind();
+        clone.flip();
+        return clone;
+    }
     protected void emit(T record, int targetSubpartition) throws IOException {
-        checkErroneous();
+        ByteBuffer record1 = cloneByteBuffer(serializeRecord(serializer, record));
 
-        targetPartition.emitRecord(serializeRecord(serializer, record), targetSubpartition);
-
-        if (flushAlways) {
-            targetPartition.flush(targetSubpartition);
+        emitRecordBuffers.add(new Tuple2<>(record1, targetSubpartition));
+        if(pause){
+            LOG.info("[JY] buffer emit record {}",record);
+        } else {
+            for (Tuple2<ByteBuffer, Integer> emitRecordBuffer : emitRecordBuffers) {
+                if (emitRecordBuffers.size() > 1) {
+                    LOG.info("[JY] clear buffer {} with targetSubpartition {}",
+                            emitRecordBuffer.f0,emitRecordBuffer.f1);
+                }
+                checkErroneous();
+                targetPartition.emitRecord(emitRecordBuffer.f0, emitRecordBuffer.f1);
+                if (flushAlways) {
+                    targetPartition.flush(emitRecordBuffer.f1);
+                }
+            }
+            emitRecordBuffers.clear();
         }
     }
 
@@ -112,11 +137,42 @@ public abstract class RecordWriter<T extends IOReadableWritable> implements Avai
         broadcastEvent(event, false);
     }
 
-    public void broadcastEvent(AbstractEvent event, boolean isPriorityEvent) throws IOException {
-        targetPartition.broadcastEvent(event, isPriorityEvent);
+    volatile boolean pause = false;
 
-        if (flushAlways) {
-            flushAll();
+    ArrayList<Tuple2<AbstractEvent, Boolean>> broadcastEventBuffers = new ArrayList<>();
+
+
+    public void broadcastEvent(AbstractEvent event, boolean isPriorityEvent) throws IOException {
+        if (event instanceof EndBarrierMarker) {
+            if (!pause) {
+                LOG.info("[JY] stop write event, buffer them");
+                pause = true;
+                targetPartition.broadcastEvent(event, isPriorityEvent);
+                if (flushAlways) {
+                    flushAll();
+                }
+            }else{
+                LOG.info("[JY] clear buffer");
+                pause = false;
+                event = null;
+            }
+        }
+        if (event != null) {
+            broadcastEventBuffers.add(new Tuple2<>(event, isPriorityEvent));
+        }
+        if (pause) {
+            LOG.info("[JY] buffer broadcast event {}",event);
+        } else {
+            for (Tuple2<AbstractEvent, Boolean> broadcastEventBuffer : broadcastEventBuffers) {
+                if (broadcastEventBuffers.size() > 1) {
+                    LOG.info("[JY] clear buffer {}",broadcastEventBuffer.f0);
+                }
+                targetPartition.broadcastEvent(broadcastEventBuffer.f0, broadcastEventBuffer.f1);
+                if (flushAlways) {
+                    flushAll();
+                }
+            }
+            broadcastEventBuffers.clear();
         }
     }
 

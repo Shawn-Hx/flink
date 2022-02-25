@@ -27,18 +27,22 @@ import java.util.HashSet;
 import java.util.Set;
 
 /** Represents execution vertices that will run the same shared slot. */
-class ExecutionSlotSharingGroup {
+public class ExecutionSlotSharingGroup {
 
-    private final Set<ExecutionVertexID> executionVertexIds;
+    public final Set<ExecutionVertexID> executionVertexIds;
 
     private ResourceProfile resourceProfile = ResourceProfile.UNKNOWN;
 
-    ExecutionSlotSharingGroup() {
+    public ExecutionSlotSharingGroup() {
         this.executionVertexIds = new HashSet<>();
     }
 
-    void addVertex(final ExecutionVertexID executionVertexId) {
+    public void addVertex(final ExecutionVertexID executionVertexId) {
         executionVertexIds.add(executionVertexId);
+    }
+
+    public void removeVertex(final ExecutionVertexID executionVertexId) {
+        executionVertexIds.remove(executionVertexId);
     }
 
     void setResourceProfile(ResourceProfile resourceProfile) {

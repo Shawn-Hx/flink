@@ -24,6 +24,7 @@ import org.apache.flink.runtime.checkpoint.CheckpointException;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
 import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.execution.CancelTaskException;
+import org.apache.flink.runtime.io.network.ConnectionID;
 import org.apache.flink.runtime.io.network.TaskEventPublisher;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
@@ -368,4 +369,24 @@ public class LocalInputChannel extends InputChannel implements BufferAvailabilit
     ResultSubpartitionView getSubpartitionView() {
         return subpartitionView;
     }
+
+    InputChannel toRemoteInputChannel(ConnectionID connectionID,ResultPartitionID partitionId) throws IOException {
+        RemoteInputChannel remoteInputChannel =
+                new RemoteInputChannel(
+                        inputGate,
+                        getChannelIndex(),
+                        partitionId,
+                        connectionID,
+                        recoveredInputChannel.connectionManager,
+                        initialBackoff,
+                        maxBackoff,
+                        recoveredInputChannel.networkBuffersPerChannel,
+                        numBytesIn,
+                        numBuffersIn,
+                        recoveredInputChannel.channelStateWriter);
+        remoteInputChannel.setRecoveredInputChannel(recoveredInputChannel);
+        remoteInputChannel.setup();
+        return remoteInputChannel;
+    }
+
 }

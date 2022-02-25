@@ -64,18 +64,21 @@ final class UpstreamRecoveryTrackerImpl implements UpstreamRecoveryTracker {
 
     @Override
     public void handleEndOfRecovery(InputChannelInfo channelInfo) throws IOException {
-        if (numUnrestoredChannels > 0) {
-            Preconditions.checkState(
-                    !restoredChannels.contains(channelInfo), "already restored: %s", channelInfo);
-            restoredChannels.add(channelInfo);
-            numUnrestoredChannels--;
-            if (numUnrestoredChannels == 0) {
-                for (InputChannelInfo inputChannelInfo : inputGate.getChannelInfos()) {
-                    inputGate.resumeConsumption(inputChannelInfo);
-                }
-                restoredChannels.clear();
-            }
-        }
+        inputGate.resumeConsumption(channelInfo);
+        // if (numUnrestoredChannels > 0) {
+        //     Preconditions.checkState(
+        //             !restoredChannels.contains(channelInfo), "already restored: %s", channelInfo);
+        //     restoredChannels.add(channelInfo);
+        //     numUnrestoredChannels--;
+        //     if (numUnrestoredChannels == 0) {
+        //         for (InputChannelInfo inputChannelInfo : inputGate.getChannelInfos()) {
+        //             inputGate.resumeConsumption(inputChannelInfo);
+        //         }
+        //         restoredChannels.clear();
+        //     }
+        // }else{
+        //     inputGate.resumeConsumption(channelInfo);
+        // }
     }
 
     @Override

@@ -51,7 +51,7 @@ public abstract class InputChannel {
     /** The info of the input channel to identify it globally within a task. */
     protected final InputChannelInfo channelInfo;
 
-    protected final ResultPartitionID partitionId;
+    protected ResultPartitionID partitionId;
 
     protected final SingleInputGate inputGate;
 
@@ -73,6 +73,8 @@ public abstract class InputChannel {
 
     /** The current backoff (in ms). */
     private int currentBackoff;
+
+    public RecoveredInputChannel recoveredInputChannel;
 
     protected InputChannel(
             SingleInputGate inputGate,
@@ -121,6 +123,14 @@ public abstract class InputChannel {
 
     public ResultPartitionID getPartitionId() {
         return partitionId;
+    }
+
+    public RecoveredInputChannel getRecoveredInputChannel() {
+        return recoveredInputChannel;
+    }
+
+    public void setRecoveredInputChannel(RecoveredInputChannel recoveredInputChannel) {
+        this.recoveredInputChannel = recoveredInputChannel;
     }
 
     /**

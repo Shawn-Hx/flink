@@ -19,6 +19,7 @@ package org.apache.flink.runtime.resourcemanager.slotmanager;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.instance.InstanceID;
@@ -48,7 +49,7 @@ public class DefaultSlotTracker implements SlotTracker {
     private final Map<SlotID, DeclarativeTaskManagerSlot> slots = new HashMap<>();
 
     /** Index of all currently free slots. */
-    private final Map<SlotID, DeclarativeTaskManagerSlot> freeSlots = new LinkedHashMap<>();
+    private  Map<SlotID, DeclarativeTaskManagerSlot> freeSlots = new LinkedHashMap<>();
 
     private final MultiSlotStatusUpdateListener slotStatusUpdateListeners =
             new MultiSlotStatusUpdateListener();
@@ -211,6 +212,11 @@ public class DefaultSlotTracker implements SlotTracker {
         return Collections.unmodifiableCollection(freeSlots.values());
     }
 
+
+    public Collection<TaskManagerSlotInformation> getAllSlots() {
+        return Collections.unmodifiableCollection(slots.values());
+    }
+
     @Override
     public Collection<TaskExecutorConnection> getTaskExecutorsWithAllocatedSlotsForJob(
             JobID jobId) {
@@ -333,5 +339,25 @@ public class DefaultSlotTracker implements SlotTracker {
             listeners.forEach(
                     listeners -> listeners.notifySlotStatusChange(slot, previous, current, jobId));
         }
+    }
+
+    public void moveToFirstFree(ResourceID resourceID){
+        SlotID key = null;
+        DeclarativeTaskManagerSlot slot = null;
+        for (Map.Entry<SlotID, DeclarativeTaskManagerSlot> entry : freeSlots.entrySet()) {
+            key = entry.getKey();
+            slot = entry.getValue();
+            if (slot.getTaskManagerConnection().getResourceID().equals(resourceID)) {
+                break;
+            }
+        }
+        LinkedHashMap<SlotID, DeclarativeTaskManagerSlot> slotsOrdered = new LinkedHashMap<>();
+        slotsOrdered.put(key,slot);
+        for (Map.Entry<SlotID, DeclarativeTaskManagerSlot> entry : freeSlots.entrySet()) {
+            if (entry.getKey() != key) {
+                slotsOrdered.put(entry.getKey(), entry.getValue());
+            }
+        }
+        freeSlots=slotsOrdered;
     }
 }

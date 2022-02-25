@@ -24,6 +24,7 @@ import org.apache.flink.runtime.checkpoint.CheckpointFailureReason;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetricsBuilder;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.checkpoint.CheckpointType;
 import org.apache.flink.runtime.checkpoint.StateObjectCollection;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter.ChannelStateWriteResult;
@@ -319,6 +320,71 @@ class SubtaskCheckpointCoordinatorImpl implements SubtaskCheckpointCoordinator {
             cleanup(snapshotFutures, metadata, metrics, ex);
             throw ex;
         }
+    }
+
+    public void checkpointState3(
+            long checkpointId,
+            OperatorChain<?, ?> operatorChain,
+            Supplier<Boolean> isRunning)
+            throws Exception {
+        Map<OperatorID, OperatorSnapshotFutures> snapshotFutures =
+                new HashMap<>(operatorChain.getNumberOfOperators());
+            long started = System.nanoTime();
+        CheckpointMetricsBuilder metrics = new CheckpointMetricsBuilder();
+            CheckpointOptions options = new CheckpointOptions(CheckpointType.CHECKPOINT,new CheckpointStorageLocationReference(new byte[]{1}));
+            CheckpointMetaData metadata = new CheckpointMetaData(checkpointId,started);
+            ChannelStateWriteResult channelStateWriteResult = ChannelStateWriteResult.EMPTY;
+            CheckpointStreamFactory storage =
+                    checkpointStorage.resolveCheckpointStorageLocation(
+                            checkpointId, null);
+            try {
+                for (StreamOperatorWrapper<?, ?> operatorWrapper :
+                        operatorChain.getAllOperators(true)) {
+                    if (!operatorWrapper.isClosed()) {
+                        StreamOperator<?> op = operatorWrapper.getStreamOperator();
+                        OperatorSnapshotFutures snapshotInProgress =op.snapshotState(
+                                checkpointId,
+                                started,
+                                options,
+                                storage);
+                        if (op == operatorChain.getMainOperator()) {
+                            snapshotInProgress.setInputChannelStateFuture(
+                                    channelStateWriteResult
+                                            .getInputChannelStateHandles()
+                                            .thenApply(StateObjectCollection::new)
+                                            .thenApply(SnapshotResult::of));
+                        }
+                        if (op == operatorChain.getTailOperator()) {
+                            snapshotInProgress.setResultSubpartitionStateFuture(
+                                    channelStateWriteResult
+                                            .getResultSubpartitionStateHandles()
+                                            .thenApply(StateObjectCollection::new)
+                                            .thenApply(SnapshotResult::of));
+                        }
+                        snapshotFutures.put(
+                                operatorWrapper.getStreamOperator().getOperatorID(),
+                                snapshotInProgress);
+                    }
+                }
+            } finally {
+                checkpointStorage.clearCacheFor(checkpointId);
+            }
+
+            metrics.setSyncDurationMillis((System.nanoTime() - started) / 1_000_000);
+            metrics.setUnalignedCheckpoint(options.isUnalignedCheckpoint());
+
+            asyncOperationsThreadPool.execute(
+                    new AsyncCheckpointRunnable2(
+                            snapshotFutures,
+                            metadata,
+                            metrics,
+                            System.nanoTime(),
+                            taskName,
+                            registerConsumer(),
+                            unregisterConsumer(),
+                            env,
+                            asyncExceptionHandler,
+                            isRunning));
     }
 
     @Override

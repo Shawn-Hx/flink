@@ -102,7 +102,7 @@ public class TaskDeploymentDescriptorFactory {
                 createInputGateDeploymentDescriptors());
     }
 
-    private List<InputGateDeploymentDescriptor> createInputGateDeploymentDescriptors() {
+    public List<InputGateDeploymentDescriptor> createInputGateDeploymentDescriptors() {
         List<InputGateDeploymentDescriptor> inputGates = new ArrayList<>(consumedPartitions.size());
 
         for (List<IntermediateResultPartition> partitions : consumedPartitions) {
@@ -112,7 +112,6 @@ public class TaskDeploymentDescriptorFactory {
             IntermediateResultPartition resultPartition = partitions.get(0);
 
             int numConsumers = resultPartition.getConsumerVertexGroups().get(0).size();
-
             int queueToRequest = subtaskIndex % numConsumers;
             IntermediateResult consumedIntermediateResult = resultPartition.getIntermediateResult();
             IntermediateDataSetID resultId = consumedIntermediateResult.getId();
@@ -125,7 +124,6 @@ public class TaskDeploymentDescriptorFactory {
                             queueToRequest,
                             getConsumedPartitionShuffleDescriptors(partitions)));
         }
-
         return inputGates;
     }
 

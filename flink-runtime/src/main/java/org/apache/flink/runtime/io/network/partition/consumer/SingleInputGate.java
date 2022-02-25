@@ -41,7 +41,11 @@ import org.apache.flink.runtime.io.network.partition.consumer.InputChannel.Buffe
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+import org.apache.flink.runtime.migrator.EndBarrierMarker;
+import org.apache.flink.runtime.migrator.MigratePlan;
+import org.apache.flink.runtime.migrator.TaskMigrator;
 import org.apache.flink.runtime.shuffle.NettyShuffleDescriptor;
+import org.apache.flink.runtime.taskexecutor.TaskExecutor;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.function.SupplierWithException;
 
@@ -448,6 +452,43 @@ public class SingleInputGate extends IndexedInputGate {
         }
     }
 
+    public void reUpdateInputChannel(ResourceID localLocation,
+                                      NettyShuffleDescriptor shuffleDescriptor,
+                                      int index,int consumedSubpartitionIndex)throws IOException, InterruptedException{
+
+        InputChannel oldChannel = channels[index];
+        // local -> remote
+        if (oldChannel instanceof LocalInputChannel) {
+            LOG.info("[JY] update input channel local -> remote");
+            LocalInputChannel localInputChannel = (LocalInputChannel) oldChannel;
+            InputChannel remoteInputChannel = localInputChannel.toRemoteInputChannel(
+                    shuffleDescriptor.getConnectionId(),
+                    shuffleDescriptor.getResultPartitionID());
+            localInputChannel.releaseAllResources();
+            channels[index] = remoteInputChannel;
+            inputChannels.put(shuffleDescriptor.getResultPartitionID().getPartitionId(), remoteInputChannel);
+            remoteInputChannel.requestSubpartition(consumedSubpartitionIndex);
+        }
+        // remote -> remote
+        if((oldChannel instanceof RemoteInputChannel)
+                && !shuffleDescriptor.isLocalTo(localLocation)){
+            LOG.info("[JY] update input channel remote -> remote");
+            RemoteInputChannel channel = (RemoteInputChannel) oldChannel;
+            channel.reRequestSubpartition(consumedSubpartitionIndex,shuffleDescriptor.getResultPartitionID(),shuffleDescriptor.getConnectionId());
+        }
+        // remote -> local
+        if ((oldChannel instanceof RemoteInputChannel)
+                && shuffleDescriptor.isLocalTo(localLocation)) {
+            LOG.info("[JY] update input channel remote -> local");
+            RemoteInputChannel remoteInputchannel = (RemoteInputChannel) oldChannel;
+            LocalInputChannel localInputChannel = remoteInputchannel.toLocalInputChannel(shuffleDescriptor.getResultPartitionID());
+            remoteInputchannel.releaseAllResources();
+            channels[index] = localInputChannel;
+            inputChannels.put(shuffleDescriptor.getResultPartitionID().getPartitionId(), localInputChannel);
+            localInputChannel.requestSubpartition(consumedSubpartitionIndex);
+        }
+    }
+
     public void updateInputChannel(
             ResourceID localLocation, NettyShuffleDescriptor shuffleDescriptor)
             throws IOException, InterruptedException {
@@ -727,6 +768,27 @@ public class SingleInputGate extends IndexedInputGate {
             event = EventSerializer.fromBuffer(buffer, getClass().getClassLoader());
         } finally {
             buffer.recycleBuffer();
+        }
+
+        if (event.getClass() == EndBarrierMarker.class) {
+            long migrateId = ((EndBarrierMarker) event).getMigrateId();
+            LOG.info("[JY] receive EndBarrierMarker,id={}",migrateId);
+            TaskMigrator taskMigrator = TaskExecutor.taskMigrators.get(migrateId);
+            if (taskMigrator != null) {
+                MigratePlan migratePlan = taskMigrator.getMigratePlan();
+                taskMigrator.endBarrierCnt++;
+                int upSteamNodeSize = migratePlan.getUpStreamTasksID().size();
+                if(taskMigrator.endBarrierCnt == upSteamNodeSize){
+                    LOG.info("[JY] trigger checkpoints");
+                    taskMigrator.func.accept(migratePlan);
+                } else if (taskMigrator.endBarrierCnt > upSteamNodeSize) {
+                    LOG.info("[JY] trigger downStream reconnect");
+                    TaskMigrator.reconnect.accept(migrateId);
+                }
+            } else{
+                TaskMigrator.reconnect.accept(migrateId);
+                LOG.info("[JY] trigger downStream reconnect,taskMigrator=null");
+            }
         }
 
         if (event.getClass() == EndOfPartitionEvent.class) {

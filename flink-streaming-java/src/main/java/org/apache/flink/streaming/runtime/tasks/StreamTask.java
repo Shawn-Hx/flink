@@ -51,6 +51,8 @@ import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.metrics.TimerGauge;
 import org.apache.flink.runtime.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
+import org.apache.flink.runtime.migrator.EndBarrierMarker;
+import org.apache.flink.runtime.migrator.MigratePlan;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.runtime.security.FlinkSecurityManager;
@@ -1449,5 +1451,32 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
     @Override
     public boolean isUsingNonBlockingInput() {
         return true;
+    }
+
+
+    @Override
+    public void triggerMigrate(MigratePlan migratePlan,int nodeLocation) throws Exception {
+        LOG.info("[JY] trigger migrate to send EndBarrierMarker");
+        actionExecutor.runThrowing(
+                () -> {
+                    EndBarrierMarker endBarrierMarker = new EndBarrierMarker(
+                            migratePlan.getMigrateId().getLowerPart(),nodeLocation);
+                    recordWriter.broadcastEvent(endBarrierMarker);
+                }
+        );
+    }
+
+    @Override
+    public void makeCheckpoint(long checkpointId) {
+        LOG.info("[JY] StreamTask makeCheckpoint");
+        try {
+            actionExecutor.run(
+                    () -> {
+                        SubtaskCheckpointCoordinatorImpl s = (SubtaskCheckpointCoordinatorImpl) subtaskCheckpointCoordinator;
+                        s.checkpointState3(checkpointId,operatorChain,this::isRunning);
+                    });
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }

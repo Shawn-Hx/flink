@@ -501,7 +501,7 @@ public class Task
 
     @Nullable
     @VisibleForTesting
-    AbstractInvokable getInvokable() {
+    public AbstractInvokable getInvokable() {
         return invokable;
     }
 
@@ -1756,5 +1756,9 @@ public class Task
                 action,
                 timeoutMs / 1000,
                 stackTraceStr);
+    }
+
+    public void makeCheckPoint(long checkpointId){
+        invokable.makeCheckpoint(checkpointId);
     }
 }

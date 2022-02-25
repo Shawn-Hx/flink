@@ -355,12 +355,6 @@ public class PipelinedSubpartition extends ResultSubpartition
             BufferAvailabilityListener availabilityListener) {
         synchronized (buffers) {
             checkState(!isReleased);
-            checkState(
-                    readView == null,
-                    "Subpartition %s of is being (or already has been) consumed, "
-                            + "but pipelined subpartitions can only be consumed once.",
-                    getSubPartitionIndex(),
-                    parent.getPartitionId());
 
             LOG.debug(
                     "{}: Creating read view for subpartition {} of partition {}.",

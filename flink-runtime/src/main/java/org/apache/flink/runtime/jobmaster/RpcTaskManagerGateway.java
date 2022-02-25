@@ -22,6 +22,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
+import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
@@ -29,6 +30,7 @@ import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.messages.Acknowledge;
+import org.apache.flink.runtime.migrator.MigratePlan;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorGateway;
 import org.apache.flink.util.Preconditions;
@@ -113,4 +115,17 @@ public class RpcTaskManagerGateway implements TaskManagerGateway {
             ExecutionAttemptID task, OperatorID operator, SerializedValue<OperatorEvent> evt) {
         return taskExecutorGateway.sendOperatorEventToTask(task, operator, evt);
     }
+
+    @Override
+    public CompletableFuture<Acknowledge> sendMigratePlan(MigratePlan migratePlan, ExecutionAttemptID task,int nodeLocation) throws Exception {
+        return taskExecutorGateway.sendMigratePlan(migratePlan,task,nodeLocation);
+    };
+
+    @Override
+    public void connectUpstreamNodes(final ExecutionAttemptID executionAttemptID,
+                                     PartitionInfo partitionInfo,
+                                     InputGateDeploymentDescriptor inputGateDeploymentDescriptor,
+                                     int channelIndex,int consumedSubpartitionIndex) throws Exception {
+        taskExecutorGateway.connectUpstreamNodes(executionAttemptID,partitionInfo,inputGateDeploymentDescriptor,channelIndex,consumedSubpartitionIndex);
+    };
 }

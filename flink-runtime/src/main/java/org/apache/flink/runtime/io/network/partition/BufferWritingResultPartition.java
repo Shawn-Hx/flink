@@ -27,6 +27,7 @@ import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
 import org.apache.flink.runtime.metrics.TimerGauge;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
+import org.apache.flink.runtime.migrator.EndBarrierMarker;
 import org.apache.flink.util.function.SupplierWithException;
 
 import javax.annotation.Nullable;
@@ -179,11 +180,19 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
         finishBroadcastBufferBuilder();
         finishUnicastBufferBuilders();
 
-        try (BufferConsumer eventBufferConsumer =
-                EventSerializer.toBufferConsumer(event, isPriorityEvent)) {
-            for (ResultSubpartition subpartition : subpartitions) {
-                // Retain the buffer so that it can be recycled by each channel of targetPartition
+        if (event instanceof EndBarrierMarker && ((EndBarrierMarker) event).getLocation()>=0){
+            try (BufferConsumer eventBufferConsumer =
+                         EventSerializer.toBufferConsumer(event, isPriorityEvent)) {
+                ResultSubpartition subpartition = subpartitions[((EndBarrierMarker) event).getLocation()];
                 subpartition.add(eventBufferConsumer.copy(), 0);
+            }
+        }else{
+            try (BufferConsumer eventBufferConsumer =
+                         EventSerializer.toBufferConsumer(event, isPriorityEvent)) {
+                for (ResultSubpartition subpartition : subpartitions) {
+                    // Retain the buffer so that it can be recycled by each channel of targetPartition
+                    subpartition.add(eventBufferConsumer.copy(), 0);
+                }
             }
         }
     }

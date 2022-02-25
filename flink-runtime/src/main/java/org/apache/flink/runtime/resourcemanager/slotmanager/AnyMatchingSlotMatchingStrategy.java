@@ -37,6 +37,6 @@ public enum AnyMatchingSlotMatchingStrategy implements SlotMatchingStrategy {
 
         return freeSlots.stream()
                 .filter(slot -> slot.isMatchingRequirement(requestedProfile))
-                .findAny();
+                .findFirst();
     }
 }

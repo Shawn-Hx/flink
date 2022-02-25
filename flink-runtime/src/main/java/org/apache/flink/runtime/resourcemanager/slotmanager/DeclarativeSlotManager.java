@@ -29,6 +29,7 @@ import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.metrics.MetricNames;
 import org.apache.flink.runtime.metrics.groups.SlotManagerMetricGroup;
+import org.apache.flink.runtime.migrator.MigrateScheduler;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.resourcemanager.WorkerResourceSpec;
 import org.apache.flink.runtime.resourcemanager.registration.TaskExecutorConnection;
@@ -109,6 +110,9 @@ public class DeclarativeSlotManager implements SlotManager {
 
         this.slotTracker = Preconditions.checkNotNull(slotTracker);
         slotTracker.registerSlotStatusUpdateListener(createSlotStatusUpdateListener());
+
+        // [JY]
+        MigrateScheduler.slotTracker = (DefaultSlotTracker) this.slotTracker;
 
         slotMatchingStrategy = slotManagerConfiguration.getSlotMatchingStrategy();
 

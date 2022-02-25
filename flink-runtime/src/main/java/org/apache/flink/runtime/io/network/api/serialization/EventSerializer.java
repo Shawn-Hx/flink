@@ -36,6 +36,7 @@ import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.buffer.FreeingBufferRecycler;
 import org.apache.flink.runtime.io.network.buffer.NetworkBuffer;
 import org.apache.flink.runtime.io.network.partition.consumer.EndOfChannelStateEvent;
+import org.apache.flink.runtime.migrator.EndBarrierMarker;
 import org.apache.flink.runtime.state.CheckpointStorageLocationReference;
 import org.apache.flink.util.InstantiationUtil;
 
@@ -68,6 +69,8 @@ public class EventSerializer {
 
     private static final int VIRTUAL_CHANNEL_SELECTOR_EVENT = 7;
 
+    private static final int END_BARRIER_MARKER_EVENT = 8;
+
     private static final int CHECKPOINT_TYPE_CHECKPOINT = 0;
 
     private static final int CHECKPOINT_TYPE_SAVEPOINT = 1;
@@ -96,6 +99,12 @@ public class EventSerializer {
             ByteBuffer buf = ByteBuffer.allocate(12);
             buf.putInt(0, CANCEL_CHECKPOINT_MARKER_EVENT);
             buf.putLong(4, marker.getCheckpointId());
+            return buf;
+        } else if(eventClass == EndBarrierMarker.class){
+            EndBarrierMarker endBarrierMarker = (EndBarrierMarker)  event;
+            ByteBuffer buf = ByteBuffer.allocate(12);
+            buf.putInt(0, END_BARRIER_MARKER_EVENT);
+            buf.putLong(4, endBarrierMarker.getMigrateId());
             return buf;
         } else if (eventClass == EventAnnouncement.class) {
             EventAnnouncement announcement = (EventAnnouncement) event;
@@ -154,6 +163,9 @@ public class EventSerializer {
             } else if (type == CANCEL_CHECKPOINT_MARKER_EVENT) {
                 long id = buffer.getLong();
                 return new CancelCheckpointMarker(id);
+            } else if (type == END_BARRIER_MARKER_EVENT) {
+                long id = buffer.getLong();
+                return new EndBarrierMarker(id);
             } else if (type == ANNOUNCEMENT_EVENT) {
                 int sequenceNumber = buffer.getInt();
                 AbstractEvent announcedEvent = fromSerializedEvent(buffer, classLoader);

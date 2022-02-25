@@ -27,6 +27,7 @@ import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
+import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
@@ -36,6 +37,7 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobmaster.AllocatedSlotReport;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
 import org.apache.flink.runtime.messages.Acknowledge;
+import org.apache.flink.runtime.migrator.MigratePlan;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rest.messages.LogInfo;
@@ -275,4 +277,16 @@ public interface TaskExecutorGateway
      * @return the {@link ThreadDumpInfo} for this TaskManager.
      */
     CompletableFuture<ThreadDumpInfo> requestThreadDump(@RpcTimeout Time timeout);
+
+
+    default CompletableFuture<Acknowledge> sendMigratePlan(MigratePlan migratePlan, ExecutionAttemptID task,int nodeLocation) throws Exception {
+        throw new Exception("[JY] sendMigratePlan not implements");
+    };
+
+    default void connectUpstreamNodes(final ExecutionAttemptID executionAttemptID,
+                                                 PartitionInfo partitionInfo,
+                                                 InputGateDeploymentDescriptor inputGateDeploymentDescriptor,
+                                                 int channelIndex,int connectUpstreamNodes) throws Exception {
+        throw new Exception("[JY] connectUpstreamNodes not implements");
+    };
 }

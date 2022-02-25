@@ -22,12 +22,14 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
+import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.PartitionInfo;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.messages.Acknowledge;
+import org.apache.flink.runtime.migrator.MigratePlan;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorOperatorEventGateway;
@@ -137,4 +139,16 @@ public interface TaskManagerGateway extends TaskExecutorOperatorEventGateway {
     @Override
     CompletableFuture<Acknowledge> sendOperatorEventToTask(
             ExecutionAttemptID task, OperatorID operator, SerializedValue<OperatorEvent> evt);
+
+
+    default CompletableFuture<Acknowledge> sendMigratePlan(MigratePlan migratePlan, ExecutionAttemptID task,int nodeLocation) throws Exception {
+        throw new Exception("[JY] not implements");
+    };
+
+    default void connectUpstreamNodes(final ExecutionAttemptID executionAttemptID,
+                                                      PartitionInfo partitionInfo,
+                                                      InputGateDeploymentDescriptor inputGateDeploymentDescriptor,
+                                                      int channelIndex,int consumedSubpartitionIndex) throws Exception {
+        throw new Exception("[JY] connectUpstreamNodes not implements");
+    };
 }

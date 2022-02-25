@@ -28,6 +28,7 @@ import org.apache.flink.runtime.jobmaster.AllocatedSlotInfo;
 import org.apache.flink.runtime.jobmaster.AllocatedSlotReport;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
 import org.apache.flink.runtime.jobmaster.SlotInfo;
+import org.apache.flink.runtime.migrator.MigrateScheduler;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
 import org.apache.flink.runtime.slots.ResourceRequirement;
 import org.apache.flink.runtime.slots.ResourceRequirements;
@@ -89,6 +90,8 @@ public class DeclarativeSlotPoolService implements SlotPoolService {
         this.declarativeSlotPool =
                 declarativeSlotPoolFactory.create(
                         jobId, this::declareResourceRequirements, idleSlotTimeout, rpcTimeout);
+
+        MigrateScheduler.slotPool = (DefaultDeclarativeSlotPool) this.declarativeSlotPool;
     }
 
     protected DeclarativeSlotPool getDeclarativeSlotPool() {

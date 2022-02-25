@@ -27,6 +27,7 @@ import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.jobgraph.OperatorID;
+import org.apache.flink.runtime.migrator.MigratePlan;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.SerializedValue;
@@ -315,5 +316,13 @@ public abstract class AbstractInvokable {
      */
     public boolean isUsingNonBlockingInput() {
         return false;
+    }
+
+    public void triggerMigrate(MigratePlan migratePlan,int nodeLocation) throws Exception {
+        throw new Exception("[JY] triggerMigrate should be override!");
+    }
+
+    public void makeCheckpoint(long checkpointId) {
+
     }
 }

@@ -24,13 +24,16 @@ import org.apache.flink.runtime.checkpoint.CheckpointException;
 import org.apache.flink.runtime.checkpoint.channel.ChannelStateWriter;
 import org.apache.flink.runtime.event.AbstractEvent;
 import org.apache.flink.runtime.event.TaskEvent;
+import org.apache.flink.runtime.io.network.ConnectionID;
+import org.apache.flink.runtime.io.network.ConnectionManager;
+import org.apache.flink.runtime.io.network.TaskEventPublisher;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.logger.NetworkActionsLogger;
 import org.apache.flink.runtime.io.network.partition.ChannelStateHolder;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
-import org.apache.flink.util.Preconditions;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionManager;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,6 +75,12 @@ public abstract class RecoveredInputChannel extends InputChannel implements Chan
 
     private long lastStoppedCheckpointId = -1;
 
+    ConnectionID connectionId;
+    ConnectionManager connectionManager;
+
+    ResultPartitionManager partitionManager;
+    TaskEventPublisher taskEventPublisher;
+
     RecoveredInputChannel(
             SingleInputGate inputGate,
             int channelIndex,
@@ -80,7 +89,12 @@ public abstract class RecoveredInputChannel extends InputChannel implements Chan
             int maxBackoff,
             Counter numBytesIn,
             Counter numBuffersIn,
-            int networkBuffersPerChannel) {
+            int networkBuffersPerChannel,
+            ConnectionID connectionId,
+            ConnectionManager connectionManager,
+            ResultPartitionManager partitionManager,
+            TaskEventPublisher taskEventPublisher
+            ) {
         super(
                 inputGate,
                 channelIndex,
@@ -92,6 +106,10 @@ public abstract class RecoveredInputChannel extends InputChannel implements Chan
 
         bufferManager = new BufferManager(inputGate.getMemorySegmentProvider(), this, 0);
         this.networkBuffersPerChannel = networkBuffersPerChannel;
+        this.connectionId = connectionId;
+        this.connectionManager = connectionManager;
+        this.partitionManager = partitionManager;
+        this.taskEventPublisher = taskEventPublisher;
     }
 
     @Override
@@ -101,8 +119,8 @@ public abstract class RecoveredInputChannel extends InputChannel implements Chan
     }
 
     public final InputChannel toInputChannel() throws IOException {
-        Preconditions.checkState(
-                stateConsumedFuture.isDone(), "recovered state is not fully consumed");
+        // Preconditions.checkState(
+        //         stateConsumedFuture.isDone(), "recovered state is not fully consumed");
         final InputChannel inputChannel = toInputChannelInternal();
         inputChannel.checkpointStopped(lastStoppedCheckpointId);
         return inputChannel;
@@ -261,5 +279,40 @@ public abstract class RecoveredInputChannel extends InputChannel implements Chan
     @Override
     public void checkpointStarted(CheckpointBarrier barrier) throws CheckpointException {
         throw new CheckpointException(CHECKPOINT_DECLINED_TASK_NOT_READY);
+    }
+
+    protected InputChannel toLocalInputChannelInternal() {
+        LocalInputChannel localInputChannel = new LocalInputChannel(
+                inputGate,
+                getChannelIndex(),
+                partitionId,
+                partitionManager,
+                taskEventPublisher,
+                initialBackoff,
+                maxBackoff,
+                numBytesIn,
+                numBuffersIn,
+                channelStateWriter);
+        localInputChannel.setRecoveredInputChannel(this);
+        return localInputChannel;
+    }
+
+    protected InputChannel toRemoteInputChannelInternal() throws IOException {
+        RemoteInputChannel remoteInputChannel =
+                new RemoteInputChannel(
+                        inputGate,
+                        getChannelIndex(),
+                        partitionId,
+                        connectionId,
+                        connectionManager,
+                        initialBackoff,
+                        maxBackoff,
+                        networkBuffersPerChannel,
+                        numBytesIn,
+                        numBuffersIn,
+                        channelStateWriter);
+        remoteInputChannel.setRecoveredInputChannel(this);
+        remoteInputChannel.setup();
+        return remoteInputChannel;
     }
 }

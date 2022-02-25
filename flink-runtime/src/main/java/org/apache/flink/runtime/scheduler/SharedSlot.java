@@ -62,7 +62,7 @@ import java.util.stream.Collectors;
  * {@link SlotSharingExecutionSlotAllocator} to remove it from the allocator and cancel its
  * underlying physical slot request if the request is not fulfilled yet.
  */
-class SharedSlot implements SlotOwner, PhysicalSlot.Payload {
+public class SharedSlot implements SlotOwner, PhysicalSlot.Payload {
     private static final Logger LOG = LoggerFactory.getLogger(SharedSlot.class);
 
     private final SlotRequestId physicalSlotRequestId;
@@ -120,7 +120,7 @@ class SharedSlot implements SlotOwner, PhysicalSlot.Payload {
         return executionSlotSharingGroup;
     }
 
-    CompletableFuture<PhysicalSlot> getSlotContextFuture() {
+    public CompletableFuture<PhysicalSlot> getSlotContextFuture() {
         return slotContextFuture;
     }
 

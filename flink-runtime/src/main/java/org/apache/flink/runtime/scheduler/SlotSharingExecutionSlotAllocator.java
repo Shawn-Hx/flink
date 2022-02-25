@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.scheduler;
 
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.SlotProfile;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
@@ -27,6 +28,7 @@ import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlot;
 import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlotProvider;
 import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlotRequest;
 import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlotRequestBulkChecker;
+import org.apache.flink.runtime.migrator.MigrateScheduler;
 import org.apache.flink.runtime.scheduler.SharedSlotProfileRetriever.SharedSlotProfileRetrieverFactory;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.util.FlinkException;
@@ -41,6 +43,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -135,6 +138,7 @@ class SlotSharingExecutionSlotAllocator implements ExecutionSlotAllocator {
                                 Collectors.toMap(
                                         SharedSlot::getExecutionSlotSharingGroup,
                                         Function.identity()));
+        MigrateScheduler.registerSharedSlots(slots.values());
         Map<ExecutionVertexID, SlotExecutionVertexAssignment> assignments =
                 allocateLogicalSlotsFromSharedSlots(slots, executionsByGroup);
 
@@ -146,6 +150,65 @@ class SlotSharingExecutionSlotAllocator implements ExecutionSlotAllocator {
         bulkChecker.schedulePendingRequestBulkTimeoutCheck(bulk, allocationTimeout);
 
         return executionVertexIds.stream().map(assignments::get).collect(Collectors.toList());
+    }
+
+    public SlotExecutionVertexAssignment reallocateSlot(
+            ExecutionVertexID vertexID,
+            ResourceID resourceID,
+            BiFunction<ExecutionVertexID, ResourceID, SharedSlot> sharedSlotRetriever){
+        SharedSlot sharedSlot = sharedSlotRetriever.apply(vertexID, resourceID);
+        List<ExecutionVertexID> executionVertexIds = List.of(vertexID);
+        SharedSlotProfileRetriever sharedSlotProfileRetriever =
+                sharedSlotProfileRetrieverFactory.createFromBulk(new HashSet<>(executionVertexIds));
+
+        if (sharedSlot != null) {
+            CompletableFuture<LogicalSlot> logicalSlotFuture =
+                    sharedSlot.allocateLogicalSlot(vertexID);
+            return new SlotExecutionVertexAssignment(vertexID, logicalSlotFuture);
+        }else{
+            ExecutionSlotSharingGroup group = new ExecutionSlotSharingGroup();
+            group.addVertex(vertexID);
+
+            SlotRequestId physicalSlotRequestId = new SlotRequestId();
+
+            ResourceProfile physicalSlotResourceProfile =
+                    getPhysicalSlotResourceProfile(group);
+            SlotProfile slotProfile =
+                    sharedSlotProfileRetriever.getSlotProfile(
+                            group, physicalSlotResourceProfile);
+            PhysicalSlotRequest physicalSlotRequest =
+                    new PhysicalSlotRequest(
+                            physicalSlotRequestId,
+                            slotProfile,
+                            slotWillBeOccupiedIndefinitely);
+            CompletableFuture<PhysicalSlot> physicalSlotFuture =
+                    slotProvider
+                            .allocatePhysicalSlot(physicalSlotRequest)
+                            .thenApply(PhysicalSlotRequest.Result::getPhysicalSlot);
+            sharedSlot =  new SharedSlot(
+                    physicalSlotRequestId,
+                    physicalSlotResourceProfile,
+                    group,
+                    physicalSlotFuture,
+                    slotWillBeOccupiedIndefinitely,
+                    this::releaseSharedSlot);
+            MigrateScheduler.registerSharedSlots(List.of(sharedSlot));
+            sharedSlots.put(group,sharedSlot);
+        }
+
+        ExecutionSlotSharingGroup group = sharedSlot.getExecutionSlotSharingGroup();
+
+        Map<ExecutionSlotSharingGroup, List<ExecutionVertexID>> executionsByGroup = new HashMap<>();
+        executionsByGroup.put(group, executionVertexIds);
+
+        Map<ExecutionSlotSharingGroup, SharedSlot> slots = new HashMap<>();
+        slots.put(group, sharedSlot);
+
+        SharingPhysicalSlotRequestBulk bulk = createBulk(slots, executionsByGroup);
+        bulkChecker.schedulePendingRequestBulkTimeoutCheck(bulk, allocationTimeout);
+        Map<ExecutionVertexID, SlotExecutionVertexAssignment> assignments =
+                allocateLogicalSlotsFromSharedSlots(slots, executionsByGroup);
+        return executionVertexIds.stream().map(assignments::get).collect(Collectors.toList()).get(0);
     }
 
     @Override
@@ -226,6 +289,9 @@ class SlotSharingExecutionSlotAllocator implements ExecutionSlotAllocator {
 
     private void releaseSharedSlot(ExecutionSlotSharingGroup executionSlotSharingGroup) {
         SharedSlot slot = sharedSlots.remove(executionSlotSharingGroup);
+        if (slot == null) {
+            return;
+        }
         Preconditions.checkNotNull(slot);
         Preconditions.checkState(
                 slot.isEmpty(),

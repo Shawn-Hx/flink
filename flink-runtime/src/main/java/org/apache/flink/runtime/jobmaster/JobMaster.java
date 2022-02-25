@@ -59,6 +59,7 @@ import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
 import org.apache.flink.runtime.messages.checkpoint.DeclineCheckpoint;
 import org.apache.flink.runtime.messages.webmonitor.JobDetails;
 import org.apache.flink.runtime.metrics.groups.JobManagerJobMetricGroup;
+import org.apache.flink.runtime.migrator.JobMigrator;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
@@ -73,6 +74,7 @@ import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.PermanentlyFencedRpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
+import org.apache.flink.runtime.scheduler.DefaultScheduler;
 import org.apache.flink.runtime.scheduler.ExecutionGraphInfo;
 import org.apache.flink.runtime.scheduler.SchedulerNG;
 import org.apache.flink.runtime.shuffle.ShuffleMaster;
@@ -199,6 +201,8 @@ public class JobMaster extends PermanentlyFencedRpcEndpoint<JobMasterId>
             taskManagerHeartbeatManager;
 
     private HeartbeatManager<Void, Void> resourceManagerHeartbeatManager;
+
+    private JobMigrator jobMigrator;
 
     // ------------------------------------------------------------------------
 
@@ -515,9 +519,11 @@ public class JobMaster extends PermanentlyFencedRpcEndpoint<JobMasterId>
             final long checkpointId,
             final CheckpointMetrics checkpointMetrics,
             final TaskStateSnapshot checkpointState) {
-
-        schedulerNG.acknowledgeCheckpoint(
-                jobID, executionAttemptID, checkpointId, checkpointMetrics, checkpointState);
+        if(!jobMigrator.reportCheckpoint(checkpointId,
+                Objects.requireNonNullElseGet(checkpointState, TaskStateSnapshot::new))){
+            schedulerNG.acknowledgeCheckpoint(
+                    jobID, executionAttemptID, checkpointId, checkpointMetrics, checkpointState);
+        }
     }
 
     @Override
@@ -875,6 +881,13 @@ public class JobMaster extends PermanentlyFencedRpcEndpoint<JobMasterId>
 
     private void startJobMasterServices() throws Exception {
         try {
+
+            // create JobMigrator
+            if(schedulerNG instanceof DefaultScheduler){
+                DefaultScheduler defaultScheduler = (DefaultScheduler) this.schedulerNG;
+                jobMigrator = new JobMigrator(defaultScheduler,getMainThreadExecutor());
+            }
+
             this.taskManagerHeartbeatManager = createTaskManagerHeartbeatManager(heartbeatServices);
             this.resourceManagerHeartbeatManager =
                     createResourceManagerHeartbeatManager(heartbeatServices);
@@ -1352,4 +1365,10 @@ public class JobMaster extends PermanentlyFencedRpcEndpoint<JobMasterId>
             return null;
         }
     }
+
+    @Override
+    public void reportNewNodeOK(long migrateId){
+        jobMigrator.reportNewNodeOK(migrateId);
+    }
+
 }

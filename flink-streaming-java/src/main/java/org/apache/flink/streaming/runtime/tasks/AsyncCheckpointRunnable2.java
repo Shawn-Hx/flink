@@ -46,9 +46,9 @@ import static org.apache.flink.util.Preconditions.checkState;
 /**
  * This runnable executes the asynchronous parts of all involved backend snapshots for the subtask.
  */
-class AsyncCheckpointRunnable implements Runnable, Closeable {
+final class AsyncCheckpointRunnable2 extends AsyncCheckpointRunnable implements Runnable, Closeable {
 
-    public static final Logger LOG = LoggerFactory.getLogger(AsyncCheckpointRunnable.class);
+    public static final Logger LOG = LoggerFactory.getLogger(AsyncCheckpointRunnable2.class);
     private final String taskName;
     private final Consumer<AsyncCheckpointRunnable> registerConsumer;
     private final Consumer<AsyncCheckpointRunnable> unregisterConsumer;
@@ -73,7 +73,7 @@ class AsyncCheckpointRunnable implements Runnable, Closeable {
     private final AtomicReference<AsyncCheckpointState> asyncCheckpointState =
             new AtomicReference<>(AsyncCheckpointState.RUNNING);
 
-    AsyncCheckpointRunnable(
+    AsyncCheckpointRunnable2(
             Map<OperatorID, OperatorSnapshotFutures> operatorSnapshotsInProgress,
             CheckpointMetaData checkpointMetaData,
             CheckpointMetricsBuilder checkpointMetrics,
@@ -84,6 +84,13 @@ class AsyncCheckpointRunnable implements Runnable, Closeable {
             Environment taskEnvironment,
             AsyncExceptionHandler asyncExceptionHandler,
             Supplier<Boolean> isTaskRunning) {
+        super(
+                operatorSnapshotsInProgress,
+                checkpointMetaData,
+                checkpointMetrics,
+                asyncConstructionNanos,
+                taskName,register,unregister,taskEnvironment,asyncExceptionHandler,isTaskRunning
+        );
 
         this.operatorSnapshotsInProgress = checkNotNull(operatorSnapshotsInProgress);
         this.checkpointMetaData = checkNotNull(checkpointMetaData);
@@ -200,10 +207,7 @@ class AsyncCheckpointRunnable implements Runnable, Closeable {
                 .getTaskStateManager()
                 .reportTaskStateSnapshots(
                         checkpointMetaData,
-                        checkpointMetrics
-                                .setTotalBytesPersisted(
-                                        acknowledgedTaskStateSnapshot.getStateSize())
-                                .build(),
+                        null,
                         hasAckState ? acknowledgedTaskStateSnapshot : null,
                         hasLocalState ? localTaskStateSnapshot : null);
 

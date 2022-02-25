@@ -37,6 +37,7 @@ import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.concurrent.FutureUtils;
+import org.apache.flink.runtime.deployment.InputGateDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
 import org.apache.flink.runtime.entrypoint.ClusterInformation;
@@ -55,10 +56,14 @@ import org.apache.flink.runtime.heartbeat.HeartbeatTarget;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.instance.HardwareDescription;
 import org.apache.flink.runtime.instance.InstanceID;
+import org.apache.flink.runtime.io.network.NettyShuffleEnvironment;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.TaskExecutorPartitionInfo;
 import org.apache.flink.runtime.io.network.partition.TaskExecutorPartitionTracker;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.InputGateID;
+import org.apache.flink.runtime.io.network.partition.consumer.SingleInputGate;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
@@ -70,6 +75,7 @@ import org.apache.flink.runtime.jobmaster.JMTMRegistrationSuccess;
 import org.apache.flink.runtime.jobmaster.JobMasterGateway;
 import org.apache.flink.runtime.jobmaster.JobMasterId;
 import org.apache.flink.runtime.jobmaster.ResourceManagerAddress;
+import org.apache.flink.runtime.jobmaster.SerializedInputSplit;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalListener;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.management.JMXService;
@@ -80,6 +86,8 @@ import org.apache.flink.runtime.messages.ThreadInfoSample;
 import org.apache.flink.runtime.metrics.MetricNames;
 import org.apache.flink.runtime.metrics.groups.TaskManagerMetricGroup;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
+import org.apache.flink.runtime.migrator.MigratePlan;
+import org.apache.flink.runtime.migrator.TaskMigrator;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.operators.coordination.TaskNotRunningException;
 import org.apache.flink.runtime.query.KvStateClientProxy;
@@ -95,6 +103,7 @@ import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
+import org.apache.flink.runtime.shuffle.NettyShuffleDescriptor;
 import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
 import org.apache.flink.runtime.shuffle.ShuffleEnvironment;
 import org.apache.flink.runtime.state.TaskExecutorLocalStateStoresManager;
@@ -128,6 +137,9 @@ import org.apache.flink.runtime.taskmanager.UnresolvedTaskManagerLocation;
 import org.apache.flink.runtime.util.ExecutorThreadFactory;
 import org.apache.flink.runtime.util.JvmUtils;
 import org.apache.flink.runtime.webmonitor.threadinfo.ThreadInfoSamplesRequest;
+
+import org.apache.flink.shaded.guava18.com.google.common.collect.Lists;
+
 import org.apache.flink.types.SerializableOptional;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
@@ -198,7 +210,8 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
     private final LibraryCacheManager libraryCacheManager;
 
     /** The address to metric query service on this Task Manager. */
-    @Nullable private final String metricQueryServiceAddress;
+    @Nullable
+    private final String metricQueryServiceAddress;
 
     // --------- TaskManager services --------
 
@@ -238,33 +251,28 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
     private final HardwareDescription hardwareDescription;
 
     private final TaskExecutorMemoryConfiguration memoryConfiguration;
-
-    private FileCache fileCache;
-
     /** The heartbeat manager for job manager in the task manager. */
     private final HeartbeatManager<AllocatedSlotReport, TaskExecutorToJobManagerHeartbeatPayload>
             jobManagerHeartbeatManager;
-
     /** The heartbeat manager for resource manager in the task manager. */
     private final HeartbeatManager<Void, TaskExecutorHeartbeatPayload>
             resourceManagerHeartbeatManager;
-
     private final TaskExecutorPartitionTracker partitionTracker;
+    private final ThreadInfoSampleService threadInfoSampleService;
 
     // --------- resource manager --------
-
-    @Nullable private ResourceManagerAddress resourceManagerAddress;
-
-    @Nullable private EstablishedResourceManagerConnection establishedResourceManagerConnection;
-
-    @Nullable private TaskExecutorToResourceManagerConnection resourceManagerConnection;
-
-    @Nullable private UUID currentRegistrationTimeoutId;
-
+    // private final TaskMigrator taskMigrator;
+    private FileCache fileCache;
+    @Nullable
+    private ResourceManagerAddress resourceManagerAddress;
+    @Nullable
+    private EstablishedResourceManagerConnection establishedResourceManagerConnection;
+    @Nullable
+    private TaskExecutorToResourceManagerConnection resourceManagerConnection;
+    @Nullable
+    private UUID currentRegistrationTimeoutId;
     private Map<JobID, Collection<CompletableFuture<ExecutionState>>>
             taskResultPartitionCleanupFuturesPerJob = new HashMap<>(8);
-
-    private final ThreadInfoSampleService threadInfoSampleService;
 
     public TaskExecutor(
             RpcService rpcService,
@@ -330,18 +338,20 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
         ScheduledExecutorService sampleExecutor =
                 Executors.newSingleThreadScheduledExecutor(sampleThreadFactory);
         this.threadInfoSampleService = new ThreadInfoSampleService(sampleExecutor);
+
+        // this.taskMigrator = new TaskMigrator(this, getMainThreadExecutor(), taskSlotTable);
     }
 
     private HeartbeatManager<Void, TaskExecutorHeartbeatPayload>
-            createResourceManagerHeartbeatManager(
-                    HeartbeatServices heartbeatServices, ResourceID resourceId) {
+    createResourceManagerHeartbeatManager(
+            HeartbeatServices heartbeatServices, ResourceID resourceId) {
         return heartbeatServices.createHeartbeatManager(
                 resourceId, new ResourceManagerHeartbeatListener(), getMainThreadExecutor(), log);
     }
 
     private HeartbeatManager<AllocatedSlotReport, TaskExecutorToJobManagerHeartbeatPayload>
-            createJobManagerHeartbeatManager(
-                    HeartbeatServices heartbeatServices, ResourceID resourceId) {
+    createJobManagerHeartbeatManager(
+            HeartbeatServices heartbeatServices, ResourceID resourceId) {
         return heartbeatServices.createHeartbeatManager(
                 resourceId, new JobManagerHeartbeatListener(), getMainThreadExecutor(), log);
     }
@@ -553,6 +563,9 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
     @Override
     public CompletableFuture<Acknowledge> submitTask(
             TaskDeploymentDescriptor tdd, JobMasterId jobMasterId, Time timeout) {
+
+        log.info("[JY] tdd = {}", tdd.getProducedPartitions());
+
 
         try {
             final JobID jobId = tdd.getJobId();
@@ -2140,6 +2153,143 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
     //  Utility classes
     // ------------------------------------------------------------------------
 
+
+    public static Map<Long, TaskMigrator> taskMigrators = new HashMap<>();
+
+    {
+        TaskMigrator.reconnect=(mp)->{
+        getMainThreadExecutor().execute(()->{
+            getJobTable().getJobs().forEach(
+                    job->{
+                        getJobTable().getConnection(job.getJobId()).get().getJobManagerGateway()
+                                .reportNewNodeOK(mp);
+                    }
+            );
+        });
+    };
+    }
+
+
+    @Override
+    public CompletableFuture<Acknowledge> sendMigratePlan(MigratePlan migratePlan, ExecutionAttemptID taskID,int nodeLocation) {
+        Iterator<Task> tasks = taskSlotTable.getTasks(migratePlan.getJobID());
+        log.info("[JY] sendMigratePlan");
+        Lists.newArrayList(tasks).stream().filter(task -> task.getExecutionId().equals(taskID))
+                .findFirst()
+                .ifPresentOrElse(
+                    task->{
+                        if (nodeLocation == -1) {
+                            log.info("[JY] Migrated Node receive MigratePlan");
+                            TaskMigrator taskMigrator = new TaskMigrator(
+                                    migratePlan,
+                                    (mp) -> {
+                                        log.info("[JY] start makeCheckPoint");
+                                        getMainThreadExecutor().execute(() -> {
+                                            long checkpointId = mp
+                                                    .getMigrateId()
+                                                    .getLowerPart();
+                                            task.makeCheckPoint(checkpointId);
+                                            if (mp.getDownStreamTasksID().size() > 0) {
+                                                try {
+                                                    task.getInvokable().triggerMigrate(mp,-1);
+                                                } catch (Exception e) {
+                                                    e.printStackTrace();
+                                                }
+                                            }
+                                        });
+                                    }
+                            );
+                            taskMigrators.put(
+                                    migratePlan.getMigrateId().getLowerPart(),
+                                    taskMigrator
+                            );
+                            if (migratePlan.getUpStreamTasksID().size() == 0) {
+                                taskMigrator.func.accept(migratePlan);
+                            }
+                        }else{
+                            log.info("[JY] UpSteam Node receive MigratePlan");
+                            try {
+                                task.getInvokable().triggerMigrate(migratePlan,nodeLocation);
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    },
+                    ()-> log.info("[JY] error find false")
+                );
+
+        return CompletableFuture.completedFuture(Acknowledge.get());
+    }
+
+    @Override
+    public void connectUpstreamNodes(
+            final ExecutionAttemptID executionAttemptID,
+            PartitionInfo partitionInfo,
+            InputGateDeploymentDescriptor inputGateDeploymentDescriptor,
+            int channelIndex,int consumedSubpartitionIndex) throws Exception {
+        log.info("[JY] connectUpstreamNodes");
+        if (shuffleEnvironment instanceof NettyShuffleEnvironment) {
+            InputGateID id = new InputGateID(partitionInfo.getIntermediateDataSetID(), executionAttemptID);
+            ((NettyShuffleEnvironment) shuffleEnvironment)
+                    .getInputGate(id)
+                    .ifPresent(
+                            inputGate -> {
+                                if(inputGate instanceof SingleInputGate){
+                                    try {
+                                        ((SingleInputGate) inputGate).reUpdateInputChannel(
+                                                getResourceID(),
+                                                (NettyShuffleDescriptor) partitionInfo.getShuffleDescriptor(),
+                                                channelIndex,
+                                                consumedSubpartitionIndex
+                                        );
+                                    } catch (Exception e) {
+                                        log.info("[JY] connect upstream nodes failed");
+                                    }
+                                }
+                            }
+                    );
+        }
+    }
+
+    public JobTable getJobTable() {
+        return jobTable;
+    }
+
+    public TaskManagerServices getTaskExecutorServices() {
+        return taskExecutorServices;
+    }
+
+    @VisibleForTesting
+    static final class TaskExecutorJobServices implements JobTable.JobServices {
+
+        private final LibraryCacheManager.ClassLoaderLease classLoaderLease;
+
+        private final Runnable closeHook;
+
+        private TaskExecutorJobServices(
+                LibraryCacheManager.ClassLoaderLease classLoaderLease, Runnable closeHook) {
+            this.classLoaderLease = classLoaderLease;
+            this.closeHook = closeHook;
+        }
+
+        @VisibleForTesting
+        static TaskExecutorJobServices create(
+                LibraryCacheManager.ClassLoaderLease classLoaderLease, Runnable closeHook) {
+            return new TaskExecutorJobServices(classLoaderLease, closeHook);
+        }
+
+        @Override
+        public LibraryCacheManager.ClassLoaderHandle getClassLoaderHandle() {
+            return classLoaderLease;
+        }
+
+        @Override
+        public void close() {
+            classLoaderLease.release();
+            closeHook.run();
+        }
+    }
+
     /** The listener for leader changes of the resource manager. */
     private final class ResourceManagerLeaderListener implements LeaderRetrievalListener {
 
@@ -2417,34 +2567,5 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
         }
     }
 
-    @VisibleForTesting
-    static final class TaskExecutorJobServices implements JobTable.JobServices {
 
-        private final LibraryCacheManager.ClassLoaderLease classLoaderLease;
-
-        private final Runnable closeHook;
-
-        private TaskExecutorJobServices(
-                LibraryCacheManager.ClassLoaderLease classLoaderLease, Runnable closeHook) {
-            this.classLoaderLease = classLoaderLease;
-            this.closeHook = closeHook;
-        }
-
-        @Override
-        public LibraryCacheManager.ClassLoaderHandle getClassLoaderHandle() {
-            return classLoaderLease;
-        }
-
-        @Override
-        public void close() {
-            classLoaderLease.release();
-            closeHook.run();
-        }
-
-        @VisibleForTesting
-        static TaskExecutorJobServices create(
-                LibraryCacheManager.ClassLoaderLease classLoaderLease, Runnable closeHook) {
-            return new TaskExecutorJobServices(classLoaderLease, closeHook);
-        }
-    }
 }

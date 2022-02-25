@@ -47,6 +47,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
+import javax.tools.Tool;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
@@ -71,7 +72,7 @@ public class RemoteInputChannel extends InputChannel {
     private final InputChannelID id = new InputChannelID();
 
     /** The connection to use to request the remote partition. */
-    private final ConnectionID connectionId;
+    private ConnectionID connectionId;
 
     /** The connection manager to use connect to the remote partition provider. */
     private final ConnectionManager connectionManager;
@@ -150,9 +151,9 @@ public class RemoteInputChannel extends InputChannel {
      */
     @Override
     void setup() throws IOException {
-        checkState(
-                bufferManager.unsynchronizedGetAvailableExclusiveBuffers() == 0,
-                "Bug in input channel setup logic: exclusive buffers have already been set for this input channel.");
+        // checkState(
+        //         bufferManager.unsynchronizedGetAvailableExclusiveBuffers() == 0,
+        //         "Bug in input channel setup logic: exclusive buffers have already been set for this input channel.");
 
         bufferManager.requestExclusiveBuffers(initialCredit);
     }
@@ -185,6 +186,27 @@ public class RemoteInputChannel extends InputChannel {
 
             partitionRequestClient.requestSubpartition(partitionId, subpartitionIndex, this, 0);
         }
+    }
+
+    public void reRequestSubpartition(int subpartitionIndex,ResultPartitionID partitionId,ConnectionID connectionId)
+            throws IOException, InterruptedException {
+        this.partitionId = partitionId;
+        this.connectionId = connectionId;
+        LOG.debug(
+                "{}: Requesting REMOTE subpartition {} of partition {}. {}",
+                this,
+                subpartitionIndex,
+                partitionId,
+                channelStatePersister);
+        partitionRequestClient.close(this);
+        try {
+            partitionRequestClient =
+                    connectionManager.createPartitionRequestClient(connectionId);
+        } catch (IOException e) {
+            throw new PartitionConnectionException(partitionId, e);
+        }
+
+        partitionRequestClient.requestSubpartition(partitionId, subpartitionIndex, this, 0);
     }
 
     /** Retriggers a remote subpartition request. */
@@ -452,8 +474,7 @@ public class RemoteInputChannel extends InputChannel {
 
         try {
             if (expectedSequenceNumber != sequenceNumber) {
-                onError(new BufferReorderingException(expectedSequenceNumber, sequenceNumber));
-                return;
+                expectedSequenceNumber = sequenceNumber;
             }
 
             final boolean wasEmpty;
@@ -774,5 +795,21 @@ public class RemoteInputChannel extends InputChannel {
                     "SequenceBuffer(isEvent = %s, dataType = %s, sequenceNumber = %s)",
                     !buffer.isBuffer(), buffer.getDataType(), sequenceNumber);
         }
+    }
+
+    public LocalInputChannel toLocalInputChannel(ResultPartitionID partitionId){
+        LocalInputChannel localInputChannel = new LocalInputChannel(
+                inputGate,
+                getChannelIndex(),
+                partitionId,
+                recoveredInputChannel.partitionManager,
+                recoveredInputChannel.taskEventPublisher,
+                initialBackoff,
+                maxBackoff,
+                numBytesIn,
+                numBuffersIn,
+                recoveredInputChannel.channelStateWriter);
+        localInputChannel.setRecoveredInputChannel(recoveredInputChannel);
+        return localInputChannel;
     }
 }

@@ -353,7 +353,50 @@ public class ExecutionVertex
     //   Actions
     // --------------------------------------------------------------------------------------------
 
-    /** Archives the current Execution and creates a new Execution for this vertex. */
+
+    public Execution updateForNewExecution() {
+        long timestamp = System.currentTimeMillis();
+
+        final Execution oldExecution = currentExecution;
+        // oldExecution.sendCancelRpcCall(1);
+        final ExecutionState oldState = oldExecution.getState();
+        priorExecutions.add(oldExecution.archive());
+
+        final Execution newExecution =
+                new Execution(
+                        getExecutionGraphAccessor().getFutureExecutor(),
+                        this,
+                        oldExecution.getAttemptNumber() + 1,
+                        timestamp,
+                        timeout);
+
+        currentExecution = newExecution;
+
+        synchronized (inputSplits) {
+            InputSplitAssigner assigner = jobVertex.getSplitAssigner();
+            if (assigner != null) {
+                assigner.returnInputSplit(inputSplits, getParallelSubtaskIndex());
+                inputSplits.clear();
+            }
+        }
+
+        // register this execution at the execution graph, to receive call backs
+        getExecutionGraphAccessor().registerExecution(newExecution);
+
+        // if the execution was 'FINISHED' before, tell the ExecutionGraph that
+        // we take one step back on the road to reaching global FINISHED
+        if (oldState == FINISHED) {
+            getExecutionGraphAccessor().vertexUnFinished();
+        }
+
+        // reset the intermediate results
+        for (IntermediateResultPartition resultPartition : resultPartitions.values()) {
+            resultPartition.resetForNewExecution();
+        }
+
+        return oldExecution;
+    }
+
     public void resetForNewExecution() {
         resetForNewExecutionInternal(System.currentTimeMillis());
     }
