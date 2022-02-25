@@ -164,6 +164,7 @@ public class InputChannelBuilder {
     }
 
     public LocalRecoveredInputChannel buildLocalRecoveredChannel(SingleInputGate inputGate) {
+        /*
         LocalRecoveredInputChannel channel =
                 new LocalRecoveredInputChannel(
                         inputGate,
@@ -177,9 +178,12 @@ public class InputChannelBuilder {
                         metrics);
         channel.setChannelStateWriter(stateWriter);
         return channel;
+         */
+        return null;
     }
 
     public RemoteRecoveredInputChannel buildRemoteRecoveredChannel(SingleInputGate inputGate) {
+        /*
         RemoteRecoveredInputChannel channel =
                 new RemoteRecoveredInputChannel(
                         inputGate,
@@ -193,5 +197,7 @@ public class InputChannelBuilder {
                         metrics);
         channel.setChannelStateWriter(stateWriter);
         return channel;
+         */
+        return null;
     }
 }

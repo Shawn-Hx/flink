@@ -512,4 +512,9 @@ public class TestingJobMasterGateway implements JobMasterGateway {
             Time timeout) {
         return deliverCoordinationRequestFunction.apply(operatorId, serializedRequest);
     }
+
+    @Override
+    public void reportNewNodeOK(long migrateId) {
+
+    }
 }
